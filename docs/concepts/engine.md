@@ -1,23 +1,33 @@
-# The GantryEngine
+# The agent loop
 
-`GantryEngine` is the main entry point for the framework.
-It composes a perception source, a set of tools, and an LLM
-into a self-correcting **observe → think → act → review** loop
-backed by [LangGraph](https://github.com/langchain-ai/langgraph).
-
-## The loop
+Every `GantryEngine` runs the same four-step loop until the task is done
+or `max_steps` is reached.
 
 ```
-START
-  └─ memory_recall    retrieve relevant past experiences
-       └─ observe     screenshot / DOM / custom sensor
-            └─ think  LLM decides what to do
-                 └─ act   execute tool calls (with guardrail gate)
-                      └─ review   task done? → END, else → observe
+observe → think → act → review → (loop) → done
 ```
 
-Each node is a plain `async def` function bound to its configuration
-via `functools.partial`. The graph is compiled once and cached on the engine.
+Understanding this loop makes it easy to predict what your agent will do
+and where to add controls.
+
+## The four steps
+
+**Observe** — the agent takes stock of its environment.
+If you gave it a `DesktopScreen` or `WebPage` perception source, it takes a screenshot
+and appends it as a multimodal message. Without perception, this step is skipped
+and the agent only sees its task description and tool results.
+
+**Think** — the LLM receives the full message history (task + observations + tool results)
+and decides what to do next. It either calls one or more tools, or outputs a final answer
+with no tool calls.
+
+**Act** — each tool call runs through the optional guardrail gate. If you set
+`approval_callback`, dangerous tools pause and wait for a response before executing.
+Errors from tools are returned to the LLM as `ToolMessage(status="error")` so it can
+try a different approach rather than crashing.
+
+**Review** — a pure function that checks: did the LLM's last response contain any tool calls?
+If yes, loop back to observe. If no, the task is complete.
 
 ## Creating an engine
 
@@ -27,14 +37,16 @@ from langchain_anthropic import ChatAnthropic
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[...],
-    perception=...,           # optional
-    memory=...,               # optional
-    guardrail=...,            # optional
-    budget=...,               # optional
-    max_steps=50,
-    system_prompt="You are a QA engineer.",
-    on_event=lambda e: print(e),
+
+    # Optional — all have sensible defaults
+    tools=[...],               # what the agent can do
+    perception=...,            # what the agent can see
+    max_steps=50,              # hard stop on loop count
+    system_prompt="...",       # custom instructions prepended to every task
+    on_event=lambda e: print(e),  # callback for observe/think/act/review events
+    approval_callback=...,     # human-in-the-loop gate
+    guardrail=...,             # which tools need approval
+    budget=...,                # cost/time hard limits
 )
 ```
 
@@ -56,64 +68,86 @@ agent = GantryEngine(
         print(event.event_type, event.step, event.data)
     ```
 
-## BudgetPolicy
+`run()` is a thin sync wrapper around `arun()`. Use `arun()` directly in async code
+to avoid creating a nested event loop.
 
-Hard limits to prevent runaway cost:
+## Setting limits
+
+### Step limit
 
 ```python
-from gantrygraph import GantryEngine
+agent = GantryEngine(llm=..., max_steps=20)
+```
+
+The loop stops after 20 iterations regardless of whether the task is done.
+The last LLM output is returned as the result.
+
+### Time and cost limit
+
+```python
 from gantrygraph.security import BudgetPolicy
 
 agent = GantryEngine(
     llm=...,
     budget=BudgetPolicy(
         max_steps=20,
-        max_wall_seconds=60.0,   # TimeoutError after 60 s
+        max_wall_seconds=60.0,   # raises TimeoutError after 60 s
     ),
 )
 ```
 
-## Human-in-the-loop
-
-### Callback mode (no checkpointer needed)
+### Workspace sandbox
 
 ```python
-async def my_approval(tool_name: str, args: dict) -> bool:
-    print(f"Approve {tool_name}({args})?")
-    return input("[y/N] ").lower() == "y"
+from gantrygraph.security import WorkspacePolicy
 
 agent = GantryEngine(
     llm=...,
-    tools=[shell_tool],
-    approval_callback=my_approval,
-    guardrail=GuardrailPolicy(requires_approval={"shell_run"}),
+    workspace_policy=WorkspacePolicy(workspace_path="/app"),
 )
+# Automatically adds FileSystemTools and ShellTool scoped to /app
 ```
 
-### Interrupt / resume mode (durable suspension)
+## Observing what the agent does
+
+Pass `on_event` to get a callback on every step:
 
 ```python
-from gantrygraph import GantryEngine, AgentSuspended
+def log(event):
+    print(f"[{event.event_type}] step={event.step} data={event.data}")
 
-agent = GantryEngine(llm=..., tools=[shell_tool], enable_suspension=True)
-
-try:
-    result = await agent.arun("Deploy to production", thread_id="t1")
-except AgentSuspended as e:
-    print("Suspended! Tool call is waiting for approval.")
-    result = await agent.resume(e.thread_id, approved=True)
+agent = GantryEngine(llm=..., on_event=log)
 ```
 
-## Escape hatch — custom graph topology
+Events: `observe`, `think`, `act`, `review`, `error`, `done`.
+
+## Configuration from environment variables
+
+`GantryConfig` reads all settings from `GANTRY_*` env vars so you don't
+hardcode anything:
 
 ```python
-from functools import partial
-from gantrygraph import GantryEngine
-from gantrygraph.engine import act_node, observe_node, review_node, should_continue, think_node
-from gantrygraph.core.state import GantryState
-from langgraph.graph import END, START, StateGraph
+from gantrygraph import GantryConfig
+from langchain_anthropic import ChatAnthropic
 
-compiled = agent.get_graph()   # returns the raw CompiledStateGraph
+cfg = GantryConfig.from_env()
+agent = cfg.build(llm=ChatAnthropic(model="claude-sonnet-4-6"))
 ```
 
-See the [API Reference](../api-reference.md) for full parameter documentation.
+```bash
+export GANTRY_WORKSPACE=/app
+export GANTRY_MAX_STEPS=30
+export GANTRY_MAX_WALL_SECONDS=120
+```
+
+## Advanced — raw graph access
+
+`engine.get_graph()` returns the compiled LangGraph `StateGraph` if you need
+to add custom nodes, use a checkpointer, or wire up streaming differently:
+
+```python
+graph = agent.get_graph()
+# graph is a CompiledStateGraph — use it like any LangGraph graph
+```
+
+See [LangGraph docs](https://langchain-ai.github.io/langgraph/) for graph-level features.

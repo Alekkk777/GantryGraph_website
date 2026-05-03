@@ -1,18 +1,19 @@
 site_name: GantryGraph
 site_url: https://gantrygraph.com
 site_description: >-
-  Enterprise-ready Python SDK for building autonomous AI agents.
+  Open-source Python SDK for building autonomous AI agents.
   Visual computer use, MCP tools, and multi-agent swarms — backed by LangGraph.
-  Formerly openclaw.
 site_author: GantryGraph Contributors
-repo_url: https://github.com/Alekkk777/GantryGraph_website
-repo_name: gantrygraph
-edit_uri: edit/main/docs/
+repo_url: https://github.com/GantryGraph/GantryGraph
+repo_name: GantryGraph
+edit_uri: ""
 copyright: Copyright &copy; 2025 GantryGraph Contributors — MIT License
 
 theme:
   name: material
   custom_dir: docs/overrides
+  logo: assets/logo.jpg
+  favicon: assets/logo.jpg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -48,16 +49,17 @@ theme:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
-  - Concepts:
-      - Engine: concepts/engine.md
-      - Tools & Actions: concepts/tools.md
-      - Perception: concepts/perception.md
-  - How-to Guides:
-      - Desktop Agent: how-to/desktop-agent.md
-      - Browser Agent: how-to/browser-agent.md
-      - MCP Integration: how-to/mcp.md
-      - Swarm / Multi-Agent: how-to/swarm.md
-      - Cloud Deploy: how-to/cloud-deploy.md
+  - Guides:
+      - Automate the desktop: how-to/desktop-agent.md
+      - Automate a browser: how-to/browser-agent.md
+      - Connect MCP tools: how-to/mcp.md
+      - Add human approval: how-to/human-approval.md
+      - Run multiple agents: how-to/swarm.md
+      - Deploy as a REST API: how-to/cloud-deploy.md
+  - Reference:
+      - The agent loop: concepts/engine.md
+      - Tools & actions: concepts/tools.md
+      - Perception sources: concepts/perception.md
   - API Reference: api-reference.md
 
 plugins:
@@ -68,7 +70,7 @@ plugins:
         python:
           paths: [../src]
           options:
-            show_source: true
+            show_source: false
             show_root_heading: true
             show_symbol_type_heading: true
             docstring_style: google
@@ -109,6 +111,3 @@ extra:
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/gantrygraph/
       name: PyPI
-  analytics:
-    provider: google
-    property: G-XXXXXXXXXX

@@ -1,66 +1,65 @@
-# Perception
+# Perception sources
 
-Perception is how the agent observes its environment before each think step.
-Every perception source implements `BasePerception` and returns a `PerceptionResult`.
+Perception is how the agent *sees* before each think step.
+Without a perception source the agent only reads its task description and tool results.
+With one, it receives a fresh screenshot or DOM snapshot every loop iteration.
 
-## PerceptionResult
+## When do you need it?
 
-```python
-class PerceptionResult(BaseModel):
-    screenshot_b64: str | None   # base-64 PNG
-    accessibility_tree: str | None
-    url: str | None
-    width: int
-    height: int
-    metadata: dict[str, Any]
-```
+You need perception when the task requires **visual feedback** — reading what's
+currently on screen before deciding what to do next.
 
-`to_message_content()` converts it to a multimodal LangChain message block
-(image + text) that gets appended to the conversation as a `HumanMessage`.
+- Desktop automation → `DesktopScreen`
+- Web scraping / form filling → `WebPage`
+- Custom sensors (APIs, metrics, files) → subclass `BasePerception`
 
-## Built-in sources
+For pure text tasks (read files, run commands, call APIs) you don't need a
+perception source — tools alone are sufficient.
 
-### DesktopScreen
+## `DesktopScreen` — screenshot the monitor
 
-Captures the primary monitor via `mss`. Runs in a thread pool so it
-never blocks the event loop.
+Captures the primary monitor at every loop step and sends the image to the LLM.
+Runs in a thread pool so it never blocks the event loop.
 
 ```python
 from gantrygraph.perception import DesktopScreen
 
+# Default: full native resolution
+screen = DesktopScreen()
+
+# Smaller images = fewer tokens
 screen = DesktopScreen(max_resolution=(1280, 720))
 ```
 
-Requires `pip install gantrygraph` (no extra needed — `mss` is a core dep).
+No extra dependencies — `mss` is bundled with the core install.
 
-### WebPage
+## `WebPage` — screenshot a browser page
 
-Renders a URL via Playwright and captures both a screenshot and the
-page's accessibility tree.
+Renders a URL via Playwright, captures a screenshot, and extracts the
+page's accessibility tree. Requires `pip install 'gantrygraph[browser]'`.
 
 ```python
 from gantrygraph.perception import WebPage
 
-page = WebPage(url="https://example.com", headless=True)
+page = WebPage(url="https://myapp.example.com", headless=True)
 ```
 
-Requires `pip install 'gantrygraph[browser]' && playwright install chromium`.
-
 !!! tip "Share the browser with BrowserTools"
-    Pass `web_page=page` to `BrowserTools` so both perception and actions
-    operate on the **same** Playwright `Page` object:
+    Pass the same `WebPage` instance to both `perception` and `BrowserTools`
+    so they operate on the same Playwright `Page` — no double browser launch.
+
     ```python
     web = WebPage(url="https://app.example.com")
     agent = GantryEngine(
         perception=web,
         tools=[BrowserTools(web_page=web)],
-        ...
+        llm=...,
     )
     ```
 
-### MultiPerception
+## `MultiPerception` — combine sources
 
-Combine multiple sources — screenshots AND DOM tree from the same agent:
+When your agent needs to see the desktop *and* monitor a web dashboard simultaneously:
 
 ```python
 from gantrygraph import MultiPerception
@@ -71,35 +70,36 @@ agent = GantryEngine(
         DesktopScreen(),
         WebPage(url="https://dashboard.internal"),
     ]),
-    ...
+    llm=...,
 )
 ```
 
-Results are merged: first screenshot wins, accessibility trees are
-concatenated with `--- source N ---` labels.
+The first screenshot wins; accessibility trees are concatenated with source labels.
 
-## Writing a custom perception source
+## Write a custom perception source
+
+Subclass `BasePerception` and implement `observe()`. Return a `PerceptionResult`.
 
 ```python
 import asyncio
 from gantrygraph import BasePerception
 from gantrygraph.core.events import PerceptionResult
 
-class SystemStatsPerception(BasePerception):
-    """Expose CPU and memory metrics to the agent."""
+class SystemMetricsPerception(BasePerception):
+    """Let the agent read live CPU and memory stats."""
 
     async def observe(self) -> PerceptionResult:
         import psutil
         stats = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: {
-                "cpu_percent": psutil.cpu_percent(),
-                "mem_percent": psutil.virtual_memory().percent,
+                "cpu": psutil.cpu_percent(),
+                "mem": psutil.virtual_memory().percent,
             },
         )
         return PerceptionResult(
             screenshot_b64=None,
-            accessibility_tree=f"CPU: {stats['cpu_percent']}%\nMEM: {stats['mem_percent']}%",
+            accessibility_tree=f"CPU: {stats['cpu']}%\nMEM: {stats['mem']}%",
             url=None,
             width=0,
             height=0,
@@ -107,23 +107,16 @@ class SystemStatsPerception(BasePerception):
         )
 
     async def close(self) -> None:
-        pass  # nothing to clean up
+        pass
 ```
 
-## Vision preprocessing
-
-`BaseVisionProvider` wraps the screenshot-to-LLM path,
-letting you swap vision backends without touching agent code:
+Use it like any built-in source:
 
 ```python
-from gantrygraph import ClaudeVision, GantryEngine
-
 agent = GantryEngine(
-    llm=ChatAnthropic(...),
-    perception=DesktopScreen(),
-    # ClaudeVision pre-processes screenshots for Claude's vision API
+    perception=SystemMetricsPerception(),
+    tools=[...],
+    llm=...,
 )
+agent.run("Alert me if CPU stays above 90% for more than 30 seconds.")
 ```
-
-Supported: `ClaudeVision` (built-in). GPT-4o and custom providers via
-`BaseVisionProvider`.

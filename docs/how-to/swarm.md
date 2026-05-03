@@ -1,90 +1,123 @@
-# Swarm / Multi-Agent
+# Run multiple agents
 
-`GantrySupervisor` decomposes a complex task into subtasks and routes each
-to a specialist `GantryEngine` worker. Workers run in parallel via
-`asyncio.gather` and their results are synthesised by the LLM into a final answer.
+When a task is too complex for one agent — or can be split into
+parallel workstreams — use `GantrySupervisor`.
 
-## Homogeneous workers (same engine, N replicas)
+The supervisor LLM decomposes your task into subtasks, dispatches each to
+a worker agent, runs all workers in parallel, and synthesises a final answer.
+
+## When to use a swarm
+
+Use a swarm when:
+
+- The task has **independent parts** that don't need to share state
+  (e.g. "run tests AND update docs AND check security")
+- You want **specialist agents** — one for web research, one for code, one for databases
+- You want **speed** — parallel workers finish faster than sequential steps
+
+## Homogeneous swarm — same agent, N copies
 
 ```python
 from gantrygraph.swarm import GantrySupervisor
-from gantrygraph.presets import qa_agent
+from gantrygraph import GantryEngine
+from gantrygraph.actions import FileSystemTools, ShellTool
 from langchain_anthropic import ChatAnthropic
 
 llm = ChatAnthropic(model="claude-sonnet-4-6")
 
+def make_worker():
+    return GantryEngine(
+        llm=llm,
+        tools=[
+            FileSystemTools(workspace="/app"),
+            ShellTool(workspace="/app", allowed_commands=["python", "pytest", "ruff"]),
+        ],
+        max_steps=20,
+    )
+
 supervisor = GantrySupervisor(
     llm=llm,
-    worker_factory=lambda: qa_agent(llm, workspace="/app"),
+    worker_factory=make_worker,
     n_workers=4,
 )
 
 result = await supervisor.arun(
-    "Run tests, check coverage, lint the codebase, and update CHANGELOG."
+    "Run all tests, fix any failures, lint the codebase, and update CHANGELOG.md."
 )
+print(result)
 ```
 
-The supervisor LLM splits the task into ≤ `n_workers` subtasks,
-dispatches them in parallel, waits for all to finish, and synthesises
-the results.
+The supervisor splits the task into up to 4 subtasks and runs them at the same time.
 
-## Heterogeneous workers (different specialist agents)
+## Heterogeneous swarm — specialist agents
 
-Use `WorkerSpec` when each worker has a different toolset:
+When different parts of the task need different tools, define each worker separately:
 
 ```python
-from gantrygraph import GantryEngine, WorkerSpec
-from gantrygraph.presets import qa_agent, browser_agent
-from gantrygraph.swarm import GantrySupervisor
+from gantrygraph.swarm import GantrySupervisor, WorkerSpec
+from gantrygraph import GantryEngine
+from gantrygraph.perception import WebPage
+from gantrygraph.actions import BrowserTools, FileSystemTools
+from gantrygraph.mcp import MCPClient
 from langchain_anthropic import ChatAnthropic
 
 llm = ChatAnthropic(model="claude-sonnet-4-6")
 
+# Web researcher
+web = WebPage(url="https://google.com", headless=True)
+researcher = GantryEngine(
+    llm=llm,
+    perception=web,
+    tools=[BrowserTools(web_page=web)],
+    max_steps=15,
+)
+
+# Code worker
+coder = GantryEngine(
+    llm=llm,
+    tools=[
+        FileSystemTools(workspace="/app"),
+        ShellTool(workspace="/app", allowed_commands=["python", "pytest"]),
+    ],
+    max_steps=20,
+)
+
+# Database worker
+db_agent = GantryEngine(
+    llm=llm,
+    tools=[MCPClient("npx -y @modelcontextprotocol/server-postgres postgresql://...")],
+    max_steps=10,
+)
+
 supervisor = GantrySupervisor(
     llm=llm,
     workers=[
-        WorkerSpec(
-            name="code_fixer",
-            engine=qa_agent(llm, workspace="/app"),
-            description="Fixes Python bugs, runs tests, commits changes.",
-        ),
-        WorkerSpec(
-            name="web_researcher",
-            engine=browser_agent(llm, start_url="https://google.com"),
-            description="Browses the web and retrieves information.",
-        ),
-        WorkerSpec(
-            name="db_analyst",
-            engine=GantryEngine(llm=llm, tools=[DatabaseTools(CONN)]),
-            description="Queries the production database for metrics.",
-        ),
+        WorkerSpec(name="researcher", engine=researcher,
+                   description="Browses the web and retrieves up-to-date information."),
+        WorkerSpec(name="coder",      engine=coder,
+                   description="Reads and edits source code, runs tests."),
+        WorkerSpec(name="db_analyst", engine=db_agent,
+                   description="Queries the production database for metrics."),
     ],
 )
 
 result = await supervisor.arun(
-    "Fix the auth bug, research the OAuth 2.0 spec, and pull the last-week login stats."
+    "Research the latest OAuth 2.0 spec changes, update our auth module to comply, "
+    "and pull last week's login failure stats from the database."
 )
 ```
 
-The supervisor LLM assigns subtasks using `[worker_name] subtask` notation.
-Each worker runs its subtask independently, then all results are synthesised.
-
-## WorkerResult
-
-Each worker returns a `WorkerResult`:
+## Reading individual worker results
 
 ```python
-from gantrygraph.swarm import WorkerResult
+supervisor_result = await supervisor.arun("...")
 
-# result.results is a list[WorkerResult]
-for r in supervisor_result.results:
-    print(r.worker_name, r.result, r.metadata)
+for worker_result in supervisor_result.results:
+    print(f"[{worker_result.worker_name}] {worker_result.result}")
 ```
 
-`metadata["worker_name"]` is always set for traceability.
+## Notes on concurrency
 
-## Scaling considerations
-
-- Workers share no state — each has its own `GantryEngine` lifecycle.
-- `asyncio.gather` is used, so all workers run concurrently in the same event loop.
-- For CPU-bound workers or very long tasks, consider running each worker in a separate process.
+- Workers run with `asyncio.gather` — all in the same event loop
+- Each worker has its own `GantryEngine` lifecycle (separate tool state)
+- For CPU-intensive or very long-running workers, consider separate processes

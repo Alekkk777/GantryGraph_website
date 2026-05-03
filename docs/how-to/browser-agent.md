@@ -1,46 +1,16 @@
-# Browser Agent
+# Automate a browser
 
-A browser agent controls a Chromium browser via Playwright.
-It can navigate URLs, click elements, fill forms, and extract text.
+This guide shows you how to build an agent that navigates websites,
+fills forms, clicks buttons, and extracts data — using a real Chromium browser.
 
-## Install
+## Prerequisites
 
 ```bash
 pip install 'gantrygraph[browser]'
 playwright install chromium
 ```
 
-## Quick start — with perception
-
-When `start_url` is provided, `WebPage` perception is added automatically
-and **shares the same browser** as `BrowserTools`.
-The agent sees the current page state at every loop iteration.
-
-```python
-from gantrygraph.presets import browser_agent
-from langchain_anthropic import ChatAnthropic
-
-agent = browser_agent(
-    llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    start_url="https://github.com/trending",
-)
-result = agent.run("Find the top 3 trending Python repos and return their names and star counts.")
-print(result)
-```
-
-## Without perception (tool-only mode)
-
-The agent reads the page explicitly using `browser_get_text`:
-
-```python
-agent = browser_agent(llm=ChatAnthropic(...))
-result = agent.run(
-    "Go to https://news.ycombinator.com, "
-    "find all links on the front page, and return the top 5 titles."
-)
-```
-
-## Manual configuration
+## A working agent
 
 ```python
 from gantrygraph import GantryEngine
@@ -48,24 +18,98 @@ from gantrygraph.perception import WebPage
 from gantrygraph.actions import BrowserTools
 from langchain_anthropic import ChatAnthropic
 
+# Share the same browser between perception and actions
+web = WebPage(url="https://news.ycombinator.com", headless=True)
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    perception=web,
+    tools=[BrowserTools(web_page=web)],
+    max_steps=20,
+)
+
+result = agent.run(
+    "Find the top 5 stories on the front page and return their titles and links."
+)
+print(result)
+```
+
+Passing the same `WebPage` to both `perception` and `BrowserTools` means
+they share the same browser tab. The agent sees a screenshot plus the page's
+accessibility tree on every step, giving it precise context for clicking.
+
+## Available browser tools
+
+| Tool | What it does |
+|------|--------------|
+| `browser_navigate` | Open a URL |
+| `browser_click` | Click a CSS selector or XPath |
+| `browser_fill` | Type text into an input field |
+| `browser_get_text` | Return visible text from an element or the whole page |
+| `browser_get_url` | Return the current URL |
+
+## Common patterns
+
+### Fill a form and submit
+
+```python
 web = WebPage(url="https://myapp.example.com/login", headless=False)
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
     perception=web,
-    tools=[BrowserTools(web_page=web)],   # shared browser instance
+    tools=[BrowserTools(web_page=web)],
+    max_steps=15,
+)
+
+agent.run("Log in with username 'admin' and password 'secret', then go to the dashboard.")
+```
+
+### Scrape data without perception
+
+If the agent only needs to extract information (no clicking), you can skip
+the `perception` source and let it call `browser_get_text` explicitly.
+This is cheaper — no screenshots are sent to the LLM.
+
+```python
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[BrowserTools(headless=True)],   # no perception
+    max_steps=10,
+)
+
+result = agent.run(
+    "Go to https://pypi.org/project/gantrygraph/ and tell me the latest version."
+)
+```
+
+### Save results to a file
+
+```python
+from gantrygraph.actions import FileSystemTools
+
+agent = GantryEngine(
+    llm=...,
+    perception=web,
+    tools=[
+        BrowserTools(web_page=web),
+        FileSystemTools(workspace="/tmp/results"),
+    ],
     max_steps=30,
 )
 
-agent.run("Log in with user=admin pass=secret and navigate to the dashboard.")
+agent.run(
+    "Go to https://github.com/trending/python?since=weekly, "
+    "extract all repo names and star counts, and save them to trending.json."
+)
 ```
 
-## Available browser tools
+## Headless vs. visible browser
 
-| Tool | Description |
-|------|-------------|
-| `browser_navigate` | Open a URL |
-| `browser_click` | Click a CSS/XPath selector |
-| `browser_fill` | Fill a form field |
-| `browser_get_text` | Get visible text of an element or the whole page |
-| `browser_get_url` | Get the current URL |
+Set `headless=False` when developing — you can watch the agent work in real time.
+Set `headless=True` for production or CI runs.
+
+```python
+web = WebPage(url="...", headless=False)   # visible — for development
+web = WebPage(url="...", headless=True)    # invisible — for production
+```

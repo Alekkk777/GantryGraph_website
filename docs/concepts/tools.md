@@ -1,138 +1,152 @@
-# Tools & Actions
+# Tools & actions
 
-GantryGraph exposes three ways to give an agent capabilities:
+Tools are what the agent can *do*. Every tool call comes from the LLM's
+decision in the think step — the agent decides which tool to call and with what arguments.
 
-| Mechanism | Use case |
-|-----------|----------|
-| `@gantry_tool` decorator | One-off functions you write |
-| `BaseAction` subclass | Grouped tools sharing state (e.g. a browser instance) |
-| `MCPClient` | External tool servers via Model Context Protocol |
+## Adding tools to an agent
 
-## `@gantry_tool` — the fast path
+Pass a list of tools (or tool groups) to `GantryEngine`:
+
+```python
+agent = GantryEngine(
+    llm=...,
+    tools=[
+        my_custom_tool,       # @gantry_tool decorated function
+        FileSystemTools(...), # built-in action group
+        MCPClient("npx ..."), # external MCP server
+    ],
+)
+```
+
+## Write a tool in 3 lines
+
+`@gantry_tool` turns any function into an LLM-callable tool.
+The docstring becomes the tool's description — write it clearly,
+because the LLM reads it to decide when to use the tool.
 
 ```python
 from gantrygraph import gantry_tool
 
 @gantry_tool
-async def search_docs(query: str) -> str:
-    """Search the internal docs and return relevant snippets."""
-    return await internal_search(query)
+async def send_email(to: str, subject: str, body: str) -> str:
+    """Send an email. Returns 'sent' on success."""
+    await email_client.send(to, subject, body)
+    return "sent"
 ```
 
-The decorator wraps the function in a `StructuredTool`, infers the
-Pydantic schema from the type annotations, and sets the LLM-visible
-description from the docstring.
+Type annotations are required — they define the schema the LLM uses to
+construct the call.
 
-Supports both sync and async functions.
+## Built-in tool groups
 
-## Built-in actions
+### Read and write files — `FileSystemTools`
 
-### FileSystemTools
-
-Sandboxed filesystem — all paths are validated against `workspace`.
-Path traversal (`../../etc/passwd`) raises `PermissionError`.
+Use this when you want the agent to create, read, modify, or delete files.
+All paths are validated against `workspace` — the agent can never escape it,
+even if the LLM tries a path like `../../etc/passwd`.
 
 ```python
 from gantrygraph.actions import FileSystemTools
 
-tools = FileSystemTools(workspace="/my/project")
-# Exposes: file_read, file_write, file_list, file_delete
+fs = FileSystemTools(workspace="/my/project")
+# tools: file_read, file_write, file_list, file_delete
 ```
 
-### ShellTool
+### Run shell commands — `ShellTool`
+
+Use this when you want the agent to run programs, tests, git commands, etc.
+`allowed_commands` is a whitelist — set it to prevent the agent from running
+arbitrary code. Leave it `None` only if you trust the agent fully.
 
 ```python
 from gantrygraph.actions import ShellTool
 
 shell = ShellTool(
     workspace="/my/project",
-    allowed_commands=["python", "pytest", "git"],  # None = allow all
+    allowed_commands=["python", "pytest", "git", "ruff"],
     timeout=30.0,
 )
-# Exposes: shell_run
+# tool: shell_run
 ```
 
-### MouseKeyboardTools
+### Control mouse and keyboard — `MouseKeyboardTools`
 
+Use this when you want the agent to interact with the desktop GUI.
 Requires `pip install 'gantrygraph[desktop]'`.
 
 ```python
 from gantrygraph.actions import MouseKeyboardTools
 
 tools = MouseKeyboardTools()
-# Exposes: mouse_click, mouse_move, key_press, type_text, screenshot
+# tools: mouse_click, mouse_move, key_press, type_text, screenshot
 ```
 
-### BrowserTools
+See the [desktop guide](../how-to/desktop-agent.md) for a full working example.
 
+### Control a browser — `BrowserTools`
+
+Use this when you want the agent to navigate websites, fill forms, or extract data.
 Requires `pip install 'gantrygraph[browser]' && playwright install chromium`.
 
 ```python
 from gantrygraph.actions import BrowserTools
 
 tools = BrowserTools(headless=True)
-# Exposes: browser_navigate, browser_click, browser_fill,
-#          browser_get_text, browser_get_url
+# tools: browser_navigate, browser_click, browser_fill,
+#        browser_get_text, browser_get_url
 ```
 
-## Security policies
+See the [browser guide](../how-to/browser-agent.md) for a full working example.
 
-### WorkspacePolicy
+## Connect external services — `MCPClient`
 
-Declarative shorthand — automatically creates `FileSystemTools` + `ShellTool`:
+[Model Context Protocol](https://modelcontextprotocol.io) lets you connect the agent
+to any MCP-compatible server — GitHub, Notion, Slack, Postgres, and hundreds more.
+No custom code needed; tools are discovered automatically from the server.
 
 ```python
-from gantrygraph import GantryEngine
-from gantrygraph.security import WorkspacePolicy
+from gantrygraph.mcp import MCPClient
 
-agent = GantryEngine(
-    llm=...,
-    workspace_policy=WorkspacePolicy(workspace_path="/app"),
-)
+# Any MCP server — local binary, npx package, or custom server
+tools = MCPClient("npx -y @modelcontextprotocol/server-github")
 ```
 
-### GuardrailPolicy
+See the [MCP guide](../how-to/mcp.md) for details.
+
+## Build a reusable tool group — `BaseAction`
+
+If your tools share state (a database connection, a browser session, a Slack client),
+group them in a `BaseAction` subclass instead of using `@gantry_tool`.
 
 ```python
-from gantrygraph.security import GuardrailPolicy
-
-guardrail = GuardrailPolicy(requires_approval={"shell_run", "file_delete"})
-
-agent = GantryEngine(
-    llm=...,
-    tools=[shell, fs],
-    guardrail=guardrail,
-    approval_callback=my_slack_approval_fn,
-)
-```
-
-## Writing a custom BaseAction
-
-```python
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import StructuredTool
 from gantrygraph import BaseAction
 
-class DatabaseTools(BaseAction):
-    def __init__(self, conn_string: str) -> None:
-        self._db = connect(conn_string)
+class SlackTools(BaseAction):
+    def __init__(self, token: str) -> None:
+        self._client = SlackClient(token)
 
-    def get_tools(self) -> list[BaseTool]:
-        db = self._db
+    def get_tools(self):
+        client = self._client
 
-        async def _query(sql: str) -> str:
-            rows = await db.fetch(sql)
-            return str(rows)
+        async def _post(channel: str, message: str) -> str:
+            """Post a message to a Slack channel."""
+            await client.post(channel, message)
+            return "posted"
+
+        async def _list_channels(team: str) -> str:
+            """List all channels in a workspace."""
+            return str(await client.list_channels(team))
 
         return [
-            StructuredTool.from_function(
-                coroutine=_query,
-                name="db_query",
-                description="Run a read-only SQL query and return results.",
-            )
+            StructuredTool.from_function(coroutine=_post,
+                name="slack_post", description="Post a Slack message."),
+            StructuredTool.from_function(coroutine=_list_channels,
+                name="slack_list_channels", description="List Slack channels."),
         ]
 
     async def close(self) -> None:
-        await self._db.close()
+        await self._client.close()
 ```
 
 `GantryEngine` calls `close()` automatically when the run finishes.

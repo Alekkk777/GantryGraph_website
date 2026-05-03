@@ -1,9 +1,7 @@
 /* ═══════════════════════════════════════════════════
    GantryGraph — extra.css
-   Brand: deep indigo (#4f46e5) + slate dark
    ═══════════════════════════════════════════════════ */
 
-/* ── Custom colour tokens ── */
 :root {
   --gg-primary:     #4f46e5;
   --gg-primary-l:   #818cf8;
@@ -11,33 +9,16 @@
   --gg-dark:        #0f172a;
   --gg-dark-2:      #1e293b;
   --gg-dark-3:      #334155;
-  --gg-text:        #e2e8f0;
-  --gg-muted:       #94a3b8;
-  --gg-border:      rgba(255,255,255,.08);
   --gg-radius:      12px;
   --gg-max:         1200px;
 
-  /* MkDocs Material override */
   --md-primary-fg-color:        #4f46e5;
   --md-primary-fg-color--light: #818cf8;
   --md-primary-fg-color--dark:  #3730a3;
   --md-accent-fg-color:         #06b6d4;
 }
 
-[data-md-color-scheme="default"] {
-  --gg-bg:      #f8fafc;
-  --gg-card:    #ffffff;
-  --gg-text:    #0f172a;
-  --gg-muted:   #64748b;
-  --gg-border:  rgba(0,0,0,.08);
-}
-
-[data-md-color-scheme="slate"] {
-  --gg-bg:     #0f172a;
-  --gg-card:   #1e293b;
-}
-
-/* ── Reset for custom sections ── */
+/* ── Reset for home sections ── */
 .gg-hero, .gg-stats, .gg-pillars, .gg-loop, .gg-oss, .gg-footer {
   width: 100%;
   box-sizing: border-box;
@@ -48,7 +29,6 @@
   background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
   padding: 90px 24px 80px;
 }
-
 .gg-hero__inner {
   max-width: var(--gg-max);
   margin: 0 auto;
@@ -57,7 +37,6 @@
   gap: 60px;
   align-items: center;
 }
-
 @media (max-width: 900px) {
   .gg-hero__inner { grid-template-columns: 1fr; }
   .gg-hero__code  { display: none; }
@@ -65,7 +44,6 @@
 
 /* Badges */
 .gg-hero__badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
-
 .gg-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -110,29 +88,27 @@
   border-radius: 8px;
   font-size: .95rem;
   font-weight: 600;
-  text-decoration: none;
+  text-decoration: none !important;
   transition: all .15s ease;
   cursor: pointer;
   border: none;
+  line-height: 1;
 }
-.gg-btn--primary {
-  background: var(--gg-primary);
-  color: #fff;
-}
-.gg-btn--primary:hover { background: #4338ca; transform: translateY(-1px); color: #fff; }
+.gg-btn--primary { background: #6366f1; color: #fff !important; box-shadow: 0 0 0 1px rgba(99,102,241,.5); }
+.gg-btn--primary:hover { background: #4f46e5; transform: translateY(-1px); color: #fff !important; box-shadow: 0 4px 16px rgba(99,102,241,.4); }
 .gg-btn--ghost {
-  background: rgba(255,255,255,.06);
-  color: #e2e8f0;
-  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.08);
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255,255,255,.18);
 }
-.gg-btn--ghost:hover { background: rgba(255,255,255,.1); color: #fff; }
+.gg-btn--ghost:hover { background: rgba(255,255,255,.14); color: #f1f5f9 !important; border-color: rgba(255,255,255,.28); }
 
-/* Install command */
+/* Install pill */
 .gg-install {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: #0f172a;
+  background: rgba(0,0,0,.4);
   border: 1px solid rgba(79,70,229,.35);
   border-radius: 8px;
   padding: 10px 16px;
@@ -144,8 +120,9 @@
   border: none;
   color: #64748b;
   cursor: pointer;
-  padding: 2px;
-  display: flex;
+  font-size: 1rem;
+  padding: 2px 4px;
+  line-height: 1;
 }
 .gg-install__copy:hover { color: #a5b4fc; }
 
@@ -167,11 +144,7 @@
 }
 .gg-dot { width: 12px; height: 12px; border-radius: 50%; }
 .gg-window__name { margin-left: 8px; font-size: .78rem; color: #6e7681; font-family: 'JetBrains Mono', monospace; }
-
-.gg-window__body {
-  padding: 20px 24px;
-  overflow-x: auto;
-}
+.gg-window__body { padding: 20px 24px; overflow-x: auto; }
 .gg-window__body pre {
   margin: 0;
   background: transparent !important;
@@ -180,19 +153,18 @@
   line-height: 1.65;
   color: #c9d1d9;
 }
-
-/* Syntax colours (inline spans) */
-.gg-window__body .kn  { color: #ff7b72; }   /* keyword */
-.gg-window__body .nn  { color: #79c0ff; }   /* module */
-.gg-window__body .n   { color: #e6edf3; }   /* name */
-.gg-window__body .nd  { color: #d2a8ff; }   /* decorator */
-.gg-window__body .k   { color: #ff7b72; }   /* keyword2 */
-.gg-window__body .nf  { color: #d2a8ff; }   /* function */
-.gg-window__body .s   { color: #a5d6ff; }   /* string */
-.gg-window__body .nb  { color: #79c0ff; }   /* builtin */
-.gg-window__body .o   { color: #ff7b72; }   /* operator */
-.gg-window__body .mi  { color: #79c0ff; }   /* int */
-.gg-window__body .p   { color: #e6edf3; }   /* punctuation */
+/* Syntax colours */
+.gg-window__body .kn  { color: #ff7b72; }
+.gg-window__body .nn  { color: #79c0ff; }
+.gg-window__body .n   { color: #e6edf3; }
+.gg-window__body .nd  { color: #d2a8ff; }
+.gg-window__body .k   { color: #ff7b72; }
+.gg-window__body .nf  { color: #d2a8ff; }
+.gg-window__body .s   { color: #a5d6ff; }
+.gg-window__body .nb  { color: #79c0ff; }
+.gg-window__body .o   { color: #ff7b72; }
+.gg-window__body .mi  { color: #79c0ff; }
+.gg-window__body .p   { color: #e6edf3; }
 
 .gg-window__out {
   padding: 10px 24px 14px;
@@ -206,33 +178,25 @@
 
 /* ═══════════════ STATS BAR ═══════════════ */
 .gg-stats {
-  background: #1e293b;
-  border-top: 1px solid var(--gg-border);
-  border-bottom: 1px solid var(--gg-border);
-  padding: 24px;
+  background: #161d2e;
+  border-top: 1px solid rgba(255,255,255,.06);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  padding: 28px 24px;
 }
 .gg-stats__inner {
   max-width: var(--gg-max);
   margin: 0 auto;
   display: flex;
-  gap: 0;
   justify-content: space-around;
   flex-wrap: wrap;
+  gap: 16px;
 }
-.gg-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 24px;
-}
+.gg-stat { display: flex; flex-direction: column; align-items: center; padding: 4px 24px; }
 .gg-stat__n { font-size: 1.9rem; font-weight: 800; color: var(--gg-primary-l); }
-.gg-stat__l { font-size: .8rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+.gg-stat__l { font-size: .78rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
 
 /* ═══════════════ PILLARS ═══════════════ */
-.gg-pillars {
-  background: var(--gg-dark);
-  padding: 80px 24px;
-}
+.gg-pillars { background: #0b1120; padding: 80px 24px; }
 .gg-pillars__inner { max-width: var(--gg-max); margin: 0 auto; }
 
 .gg-section-h {
@@ -248,39 +212,42 @@
   font-size: 1.05rem;
   margin-bottom: 52px;
 }
-
 .gg-pillars__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 24px;
+  gap: 20px;
 }
-
 .gg-pillar {
-  background: var(--gg-dark-2);
-  border: 1px solid var(--gg-border);
+  background: #131c2e;
+  border: 1px solid rgba(255,255,255,.07);
   border-radius: var(--gg-radius);
   padding: 28px 28px 24px;
   transition: border-color .2s, transform .2s;
 }
-.gg-pillar:hover { border-color: rgba(79,70,229,.4); transform: translateY(-3px); }
+.gg-pillar:hover { border-color: rgba(79,70,229,.5); transform: translateY(-2px); }
 
 .gg-pillar__icon {
-  width: 52px; height: 52px;
-  border-radius: 12px;
+  width: 48px; height: 48px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
 }
-.gg-icon--red    { background: rgba(239,68,68,.15);   color: #f87171; }
-.gg-icon--purple { background: rgba(139,92,246,.15);  color: #c4b5fd; }
-.gg-icon--blue   { background: rgba(59,130,246,.15);  color: #93c5fd; }
-.gg-icon--green  { background: rgba(34,197,94,.15);   color: #86efac; }
+.gg-icon--red    { background: rgba(239,68,68,.12);   color: #fca5a5; }
+.gg-icon--purple { background: rgba(139,92,246,.12);  color: #c4b5fd; }
+.gg-icon--blue   { background: rgba(59,130,246,.12);  color: #93c5fd; }
+.gg-icon--green  { background: rgba(34,197,94,.12);   color: #86efac; }
 
-.gg-pillar h3 { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin: 0 0 10px; }
-.gg-pillar p  { font-size: .9rem; color: #94a3b8; line-height: 1.65; margin-bottom: 16px; }
-.gg-pillar p code { background: rgba(79,70,229,.2); color: #a5b4fc; border-radius: 4px; padding: 1px 5px; font-size: .82em; }
-
+.gg-pillar h3 { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; margin: 0 0 10px; }
+.gg-pillar p  { font-size: .88rem; color: #94a3b8; line-height: 1.65; margin-bottom: 16px; }
+.gg-pillar p code {
+  background: rgba(79,70,229,.2);
+  color: #a5b4fc;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: .82em;
+}
 .gg-pillar__link {
   font-size: .85rem;
   font-weight: 600;
@@ -290,9 +257,12 @@
 .gg-pillar__link:hover { text-decoration: underline; }
 
 /* ═══════════════ LOOP ═══════════════ */
-.gg-loop { background: #0f172a; padding: 80px 24px; border-top: 1px solid var(--gg-border); }
+.gg-loop {
+  background: #0f172a;
+  padding: 80px 24px;
+  border-top: 1px solid rgba(255,255,255,.05);
+}
 .gg-loop__inner { max-width: var(--gg-max); margin: 0 auto; }
-
 .gg-loop__steps {
   display: flex;
   align-items: flex-start;
@@ -301,76 +271,80 @@
   flex-wrap: wrap;
   justify-content: center;
 }
-
 .gg-step {
   flex: 1;
   min-width: 180px;
   max-width: 220px;
-  background: #1e293b;
-  border: 1px solid var(--gg-border);
+  background: #131c2e;
+  border: 1px solid rgba(255,255,255,.07);
   border-radius: var(--gg-radius);
   padding: 22px 20px;
 }
 .gg-step__num {
-  font-size: .75rem;
+  font-size: .72rem;
   font-weight: 800;
   color: var(--gg-primary-l);
-  letter-spacing: .05em;
+  letter-spacing: .08em;
   margin-bottom: 8px;
 }
-.gg-step__body strong { display: block; color: #f1f5f9; font-size: 1rem; margin-bottom: 6px; }
-.gg-step__body p { color: #94a3b8; font-size: .85rem; line-height: 1.55; margin: 0; }
-
-.gg-step__arrow {
-  color: #334155;
-  font-size: 1.6rem;
-  line-height: 1;
-  align-self: center;
-  flex-shrink: 0;
+.gg-step__body strong { display: block; color: #f1f5f9; font-size: .95rem; margin-bottom: 6px; }
+.gg-step__body p { color: #94a3b8; font-size: .83rem; line-height: 1.55; margin: 0; }
+.gg-step__body p code {
+  background: rgba(79,70,229,.2);
+  color: #a5b4fc;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: .8em;
 }
-@media (max-width: 700px) {
-  .gg-step__arrow { display: none; }
-}
+.gg-step__arrow { color: #2d3f5e; font-size: 1.5rem; align-self: center; flex-shrink: 0; }
+@media (max-width: 700px) { .gg-step__arrow { display: none; } }
 
-/* ═══════════════ OSS SECTION ═══════════════ */
+/* ═══════════════ OSS ═══════════════ */
 .gg-oss {
-  background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+  background: linear-gradient(135deg, #1a1640 0%, #0f172a 100%);
   padding: 70px 24px;
   text-align: center;
-  border-top: 1px solid var(--gg-border);
+  border-top: 1px solid rgba(255,255,255,.05);
 }
-.gg-oss__inner { max-width: 700px; margin: 0 auto; }
+.gg-oss__inner { max-width: 680px; margin: 0 auto; }
 .gg-oss .gg-section-sub { margin-bottom: 32px; }
 
 /* ═══════════════ FOOTER ═══════════════ */
 .gg-footer {
-  background: #0f172a;
-  border-top: 1px solid var(--gg-border);
-  padding: 40px 24px 32px;
+  background: #080e1a;
+  border-top: 1px solid rgba(255,255,255,.05);
+  padding: 36px 24px 28px;
 }
 .gg-footer__inner {
   max-width: var(--gg-max);
   margin: 0 auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 32px;
-  align-items: flex-start;
+  gap: 28px;
+  align-items: center;
   justify-content: space-between;
 }
-.gg-footer__brand strong { color: #f1f5f9; font-size: 1.1rem; }
-.gg-footer__tagline { display: block; color: #64748b; font-size: .85rem; margin-top: 4px; }
+.gg-footer__brand { display: flex; align-items: center; gap: 12px; }
+.gg-footer__logo { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; }
+.gg-footer__tagline { color: #475569; font-size: .85rem; }
 
-.gg-footer__links {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.gg-footer__links a { color: #94a3b8; font-size: .9rem; text-decoration: none; }
-.gg-footer__links a:hover { color: #f1f5f9; }
+.gg-footer__links { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+.gg-footer__links a { color: #64748b; font-size: .88rem; text-decoration: none; }
+.gg-footer__links a:hover { color: #94a3b8; }
 
-.gg-footer__copy { color: #475569; font-size: .8rem; line-height: 1.6; }
-.gg-footer__copy small { color: #334155; }
+.gg-footer__copy { color: #334155; font-size: .78rem; line-height: 1.6; }
 
-/* ═══════════════ Hide MkDocs chrome on home page ═══════════════ */
+/* ═══════════════ Docs pages ═══════════════ */
+/* Hide MkDocs edit button */
 .md-content__button.md-icon { display: none; }
+
+/* Better admonition styling in docs */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 8px;
+}
+
+/* Make inline code stand out a bit more */
+.md-typeset code:not(.highlight code) {
+  border-radius: 4px;
+}

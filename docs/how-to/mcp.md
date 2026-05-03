@@ -1,11 +1,14 @@
-# MCP Integration
+# Connect MCP tools
 
 [Model Context Protocol](https://modelcontextprotocol.io) (MCP) is an open standard
-for connecting LLMs to external tools and data sources.
-GantryGraph wraps any MCP server in a `BaseMCPConnector` that starts a subprocess,
-discovers tools automatically, and shuts down cleanly when the run ends.
+for connecting AI agents to external services. Instead of writing custom integration
+code, you point the agent at an MCP server and it discovers all available tools
+automatically.
 
-## MCPClient — single server
+Popular MCP servers: GitHub, Notion, Slack, Postgres, filesystem, web search,
+and hundreds more — all work with the same two lines of code.
+
+## Connect a single server
 
 ```python
 from gantrygraph import GantryEngine
@@ -15,21 +18,25 @@ from langchain_anthropic import ChatAnthropic
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
     tools=[
-        MCPClient("npx -y @modelcontextprotocol/server-filesystem /tmp"),
+        MCPClient("npx -y @modelcontextprotocol/server-filesystem /workspace"),
     ],
     max_steps=20,
 )
 
-result = agent.run("List every file modified today and show me the 3 largest.")
+result = agent.run("List every file modified today and show the 3 largest.")
+print(result)
 ```
 
-The subprocess starts automatically when `arun()` is called and is terminated
-when the run completes — even on exceptions.
+`MCPClient` starts the server subprocess when the agent run begins and
+terminates it when it ends — even on errors.
 
-## MCPToolRegistry — multiple servers
+## Connect multiple servers
+
+Use `MCPToolRegistry` to give the agent tools from several servers at once.
+All tools are flattened into one list and de-duplicated by name.
 
 ```python
-from gantrygraph.mcp import MCPToolRegistry
+from gantrygraph.mcp import MCPClient, MCPToolRegistry
 
 registry = MCPToolRegistry([
     MCPClient("npx -y @modelcontextprotocol/server-filesystem /workspace"),
@@ -37,56 +44,65 @@ registry = MCPToolRegistry([
     MCPClient("npx -y @modelcontextprotocol/server-postgres postgresql://..."),
 ])
 
-agent = GantryEngine(llm=..., tools=[registry])
-```
-
-All tools from all servers are flattened into a single list and de-duplicated
-by name. Useful when you want one `GantryEngine` to straddle multiple domains.
-
-## mcp_agent preset
-
-```python
-from gantrygraph.presets import mcp_agent
-from langchain_anthropic import ChatAnthropic
-
-agent = mcp_agent(
-    ChatAnthropic(model="claude-sonnet-4-6"),
-    "npx -y @modelcontextprotocol/server-github",
-    "npx -y @modelcontextprotocol/server-slack",
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[registry],
+    max_steps=30,
 )
-result = agent.run("List the open PRs in the monorepo and post a summary to #engineering.")
+
+result = agent.run(
+    "Find all open PRs tagged 'bug' in the repo, "
+    "check which ones have failing tests in the database, "
+    "and write a summary to /workspace/report.md."
+)
 ```
 
-## Lifecycle management
+## Mix MCP tools with custom tools
 
-MCP connectors are async context managers.
-`GantryEngine` enters and exits them automatically in `_lifecycle()`.
-If you use the graph directly, wrap with an explicit `async with`:
+You can combine `MCPClient` with `@gantry_tool` functions and built-in action groups:
 
 ```python
-async with MCPClient("npx -y @mcp/github") as client:
-    tools = client.get_tools()
-    # use tools...
+from gantrygraph import GantryEngine, gantry_tool
+from gantrygraph.mcp import MCPClient
+from gantrygraph.actions import FileSystemTools
+
+@gantry_tool
+async def notify_slack(message: str) -> str:
+    """Post an urgent notification to #alerts on Slack."""
+    await slack.post("#alerts", message)
+    return "posted"
+
+agent = GantryEngine(
+    llm=...,
+    tools=[
+        MCPClient("npx -y @modelcontextprotocol/server-github"),
+        FileSystemTools(workspace="/workspace"),
+        notify_slack,
+    ],
+    max_steps=20,
+)
 ```
 
-## Writing an in-process connector
+## Use MCP tools directly (without an agent)
 
-For tools you want to expose without a subprocess:
+If you just want to list or call tools from an MCP server programmatically:
 
 ```python
-from langchain_core.tools import BaseTool
-from gantrygraph import BaseMCPConnector
+import asyncio
+from gantrygraph.mcp import MCPClient
 
-class InProcessConnector(BaseMCPConnector):
-    """Exposes internal services as MCP-style tools."""
+async def main():
+    async with MCPClient("npx -y @modelcontextprotocol/server-filesystem /tmp") as client:
+        tools = client.get_tools()
+        print([t.name for t in tools])
+        # ['read_file', 'write_file', 'list_directory', ...]
 
-    async def __aenter__(self) -> "InProcessConnector":
-        await self._service.connect()
-        return self
-
-    async def __aexit__(self, *_: object) -> None:
-        await self._service.disconnect()
-
-    def get_tools(self) -> list[BaseTool]:
-        return [my_tool_1, my_tool_2]
+asyncio.run(main())
 ```
+
+## Finding MCP servers
+
+Browse the official registry at [modelcontextprotocol.io/servers](https://modelcontextprotocol.io/servers)
+or search npm for packages starting with `@modelcontextprotocol/`.
+
+Any MCP-compatible server works — including ones you build yourself.
