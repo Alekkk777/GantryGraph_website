@@ -22,7 +22,7 @@ pip install 'gantrygraph[cloud]'
 ```python
 # server.py
 from gantrygraph import GantryEngine
-from gantrygraph.actions import FileSystemTools, ShellTool
+from gantrygraph.actions import FileSystemTools, ShellTools
 from gantrygraph.cloud import serve
 from langchain_anthropic import ChatAnthropic
 
@@ -32,7 +32,7 @@ def make_agent() -> GantryEngine:
         llm=ChatAnthropic(model="claude-sonnet-4-6"),
         tools=[
             FileSystemTools(workspace="/workspace"),
-            ShellTool(workspace="/workspace", allowed_commands=["python", "pytest"]),
+            ShellTools(workspace="/workspace", allowed_commands=["python", "pytest"]),
         ],
         max_steps=30,
     )

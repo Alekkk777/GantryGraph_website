@@ -105,7 +105,7 @@ agent = GantryEngine(
     llm=...,
     workspace_policy=WorkspacePolicy(workspace_path="/app"),
 )
-# Automatically adds FileSystemTools and ShellTool scoped to /app
+# Automatically adds FileSystemTools and ShellTools scoped to /app
 ```
 
 ## Observing what the agent does

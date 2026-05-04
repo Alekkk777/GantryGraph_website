@@ -14,7 +14,7 @@ Two patterns are available:
 
 ```python
 from gantrygraph import GantryEngine
-from gantrygraph.actions import ShellTool
+from gantrygraph.actions import ShellTools
 from gantrygraph.security import GuardrailPolicy
 from langchain_anthropic import ChatAnthropic
 
@@ -25,7 +25,7 @@ async def ask_human(tool_name: str, args: dict) -> bool:
     answer = input("Allow? [y/N] ").strip().lower()
     return answer == "y"
 
-shell = ShellTool(workspace="/my/project", allowed_commands=["git", "rm"])
+shell = ShellTools(workspace="/my/project", allowed_commands=["git", "rm"])
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
@@ -48,13 +48,13 @@ or chat interface.
 
 ```python
 from gantrygraph import GantryEngine, AgentSuspended
-from gantrygraph.actions import ShellTool
+from gantrygraph.actions import ShellTools
 from gantrygraph.security import GuardrailPolicy
 from langchain_anthropic import ChatAnthropic
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[ShellTool(workspace="/app")],
+    tools=[ShellTools(workspace="/app")],
     guardrail=GuardrailPolicy(requires_approval={"shell_run"}),
     enable_suspension=True,
 )

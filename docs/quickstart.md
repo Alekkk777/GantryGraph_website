@@ -70,14 +70,14 @@ It can never touch files outside `workspace`, even if the LLM tries.
 
 ```python
 from gantrygraph import GantryEngine
-from gantrygraph.actions import FileSystemTools, ShellTool
+from gantrygraph.actions import FileSystemTools, ShellTools
 from langchain_anthropic import ChatAnthropic
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
     tools=[
         FileSystemTools(workspace="/my/project"),
-        ShellTool(
+        ShellTools(
             workspace="/my/project",
             allowed_commands=["python", "pytest", "git"],
         ),

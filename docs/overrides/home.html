@@ -5,6 +5,7 @@
 {% endblock %}
 
 {% block content %}
+
 <!-- ═══════════════ HERO ═══════════════ -->
 <section class="gg-hero">
   <div class="gg-hero__inner">
@@ -19,21 +20,21 @@
       </div>
 
       <h1 class="gg-hero__headline">
-        Autonomous AI agents<br>
-        <span class="gg-hero__accent">that see and act.</span>
+        Build AI agents that<br>
+        <span class="gg-hero__accent">see, think, and act.</span>
       </h1>
 
       <p class="gg-hero__tagline">
         GantryGraph is the Python SDK for agents that control the desktop,
-        browse the web, call any tool, and run unattended — with built-in
-        safety, observability, and human approval.
+        browse the web, and call any tool — with built-in safety,
+        observability, and human approval.
       </p>
 
       <div class="gg-hero__cta">
         <a href="{{ 'quickstart/' | url }}" class="gg-btn gg-btn--primary">
           Get started →
         </a>
-        <a href="{{ 'how-to/desktop-agent/' | url }}" class="gg-btn gg-btn--ghost">
+        <a href="{{ 'i-want-to/automate-the-desktop/' | url }}" class="gg-btn gg-btn--ghost">
           See guides
         </a>
       </div>
@@ -62,21 +63,21 @@
 <span class="kn">from</span> <span class="nn">langchain_anthropic</span> <span class="kn">import</span> <span class="n">ChatAnthropic</span>
 
 <span class="nd">@gantry_tool</span>
-<span class="k">async def</span> <span class="nf">send_slack</span><span class="p">(</span><span class="n">channel</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-    <span class="s">"""Post a message to Slack."""</span>
+<span class="k">async def</span> <span class="nf">notify_slack</span><span class="p">(</span><span class="n">channel</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="s">"""Post a message to a Slack channel."""</span>
     <span class="k">return</span> <span class="k">await</span> <span class="n">slack</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">channel</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
 
 <span class="n">agent</span> <span class="o">=</span> <span class="n">GantryEngine</span><span class="p">(</span>
     <span class="n">llm</span><span class="o">=</span><span class="n">ChatAnthropic</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s">"claude-sonnet-4-6"</span><span class="p">),</span>
     <span class="n">perception</span><span class="o">=</span><span class="n">DesktopScreen</span><span class="p">(),</span>
-    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">MouseKeyboardTools</span><span class="p">(),</span> <span class="n">send_slack</span><span class="p">],</span>
+    <span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">MouseKeyboardTools</span><span class="p">(),</span> <span class="n">notify_slack</span><span class="p">],</span>
     <span class="n">max_steps</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s">"File the quarterly report and ping #finance"</span><span class="p">)</span></pre>
         </div>
         <div class="gg-window__out">
-          <span class="gg-out-ok">✓</span> Opened Excel &middot;
-          <span class="gg-out-ok">✓</span> Exported PDF &middot;
+          <span class="gg-out-ok">✓</span> Opened Excel &nbsp;·&nbsp;
+          <span class="gg-out-ok">✓</span> Exported PDF &nbsp;·&nbsp;
           <span class="gg-out-ok">✓</span> Posted to #finance
         </div>
       </div>
@@ -88,19 +89,35 @@
 <!-- ═══════════════ STATS BAR ═══════════════ -->
 <div class="gg-stats">
   <div class="gg-stats__inner">
-    <div class="gg-stat"><span class="gg-stat__n">3</span><span class="gg-stat__l">lines to add a tool</span></div>
-    <div class="gg-stat"><span class="gg-stat__n">100%</span><span class="gg-stat__l">mypy strict</span></div>
-    <div class="gg-stat"><span class="gg-stat__n">Any LLM</span><span class="gg-stat__l">model-agnostic</span></div>
-    <div class="gg-stat"><span class="gg-stat__n">MIT</span><span class="gg-stat__l">open source</span></div>
+    <div class="gg-stat">
+      <span class="gg-stat__n">3</span>
+      <span class="gg-stat__l">Lines to add a tool</span>
+    </div>
+    <div class="gg-stat">
+      <span class="gg-stat__n">100%</span>
+      <span class="gg-stat__l">mypy strict</span>
+    </div>
+    <div class="gg-stat">
+      <span class="gg-stat__n">Any LLM</span>
+      <span class="gg-stat__l">Model-agnostic</span>
+    </div>
+    <div class="gg-stat">
+      <span class="gg-stat__n">MIT</span>
+      <span class="gg-stat__l">Open source</span>
+    </div>
   </div>
 </div>
 
-<!-- ═══════════════ WHAT CAN IT DO ═══════════════ -->
+<!-- ═══════════════ FEATURES ═══════════════ -->
 <section class="gg-pillars">
   <div class="gg-pillars__inner">
-    <h2 class="gg-section-h">What can your agent do?</h2>
+    <div style="text-align:center">
+      <span class="gg-section-label">Capabilities</span>
+    </div>
+    <h2 class="gg-section-h">Everything your agent needs</h2>
     <p class="gg-section-sub">
-      GantryGraph gives your LLM eyes, hands, and guardrails.
+      Eyes, hands, memory, and guardrails — composable primitives,<br>
+      no framework lock-in.
     </p>
 
     <div class="gg-pillars__grid">
@@ -108,112 +125,100 @@
       <div class="gg-pillar">
         <div class="gg-pillar__icon gg-icon--blue">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" width="28" height="28">
+               stroke="currentColor" stroke-width="2" width="24" height="24">
             <rect x="2" y="3" width="20" height="14" rx="2"/>
             <line x1="8" y1="21" x2="16" y2="21"/>
             <line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
         </div>
-        <h3>Control the desktop</h3>
-        <p>
-          The agent takes a screenshot, decides what to click or type,
-          and acts — just like a human at a keyboard.
-          Works on any GUI application without integrations.
-        </p>
+        <h3>Desktop & browser control</h3>
+        <p>Take screenshots, click, type, navigate websites. The agent sees
+           what's on screen and acts — no integrations required.</p>
         <a href="{{ 'how-to/desktop-agent/' | url }}" class="gg-pillar__link">Desktop guide →</a>
+      </div>
+
+      <div class="gg-pillar">
+        <div class="gg-pillar__icon gg-icon--orange">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" width="24" height="24">
+            <polyline points="16 18 22 12 16 6"/>
+            <polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </div>
+        <h3>Any tool in 3 lines</h3>
+        <p>Wrap any Python function with <code>@gantry_tool</code> and the LLM
+           can call it. Connect GitHub, Notion, Postgres via MCP — no glue code.</p>
+        <a href="{{ 'how-to/custom-tools/' | url }}" class="gg-pillar__link">Build tools →</a>
       </div>
 
       <div class="gg-pillar">
         <div class="gg-pillar__icon gg-icon--purple">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" width="28" height="28">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+               stroke="currentColor" stroke-width="2" width="24" height="24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
         </div>
-        <h3>Browse the web</h3>
-        <p>
-          Navigate URLs, fill forms, extract data, and interact with
-          web apps — driven by Playwright with full visual context
-          at every step.
-        </p>
-        <a href="{{ 'how-to/browser-agent/' | url }}" class="gg-pillar__link">Browser guide →</a>
+        <h3>Safety built in</h3>
+        <p>Workspace sandboxing, human approval gates, budget caps.
+           Know exactly what your agent will do before it does it.</p>
+        <a href="{{ 'how-to/human-approval/' | url }}" class="gg-pillar__link">Add guardrails →</a>
       </div>
 
       <div class="gg-pillar">
         <div class="gg-pillar__icon gg-icon--green">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" width="28" height="28">
-            <polyline points="16 18 22 12 16 6"/>
-            <polyline points="8 6 2 12 8 18"/>
+               stroke="currentColor" stroke-width="2" width="24" height="24">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/>
           </svg>
         </div>
-        <h3>Call any tool or API</h3>
-        <p>
-          Wrap any Python function with <code>@gantry_tool</code> and it's
-          instantly available to the LLM. Connect GitHub, Notion, Postgres,
-          or any service via the MCP standard.
-        </p>
-        <a href="{{ 'how-to/mcp/' | url }}" class="gg-pillar__link">MCP guide →</a>
-      </div>
-
-      <div class="gg-pillar">
-        <div class="gg-pillar__icon gg-icon--red">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" width="28" height="28">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
-        </div>
-        <h3>Stay in control</h3>
-        <p>
-          Set a workspace sandbox so the agent can't touch files outside
-          your project. Require human approval before destructive actions.
-          Hard-cap cost and runtime with budget limits.
-        </p>
-        <a href="{{ 'how-to/human-approval/' | url }}" class="gg-pillar__link">Safety guide →</a>
+        <h3>Fully observable</h3>
+        <p>Event callbacks and OpenTelemetry traces on every step.
+           Plug into Grafana, Datadog, or your own logging pipeline.</p>
+        <a href="{{ 'how-to/observability/' | url }}" class="gg-pillar__link">Set up tracing →</a>
       </div>
 
     </div>
   </div>
 </section>
 
-<!-- ═══════════════ LOOP DIAGRAM ═══════════════ -->
+<!-- ═══════════════ LOOP ═══════════════ -->
 <section class="gg-loop">
   <div class="gg-loop__inner">
+    <div style="text-align:center">
+      <span class="gg-section-label">Architecture</span>
+    </div>
     <h2 class="gg-section-h">Simple loop. No magic.</h2>
     <p class="gg-section-sub">
       Four deterministic steps. Every decision is observable and logged.
     </p>
     <div class="gg-loop__steps">
       <div class="gg-step">
-        <div class="gg-step__num">01</div>
+        <div class="gg-step__num">01 / OBSERVE</div>
         <div class="gg-step__body">
-          <strong>Observe</strong>
+          <strong>See the world</strong>
           <p>Take a screenshot, render the DOM, or read any custom sensor. The agent always knows what it's looking at.</p>
         </div>
       </div>
-      <div class="gg-step__arrow">→</div>
       <div class="gg-step">
-        <div class="gg-step__num">02</div>
+        <div class="gg-step__num">02 / THINK</div>
         <div class="gg-step__body">
-          <strong>Think</strong>
-          <p>The LLM receives the observation and decides what to do next — or declares the task done.</p>
+          <strong>Decide what to do</strong>
+          <p>The LLM receives the observation and decides which tool to call next — or declares the task complete.</p>
         </div>
       </div>
-      <div class="gg-step__arrow">→</div>
       <div class="gg-step">
-        <div class="gg-step__num">03</div>
+        <div class="gg-step__num">03 / ACT</div>
         <div class="gg-step__body">
-          <strong>Act</strong>
-          <p>Tool calls run through the guardrail gate. Errors are fed back automatically for self-correction.</p>
+          <strong>Execute with guardrails</strong>
+          <p>Tool calls run through the approval gate. Errors are fed back automatically so the agent self-corrects.</p>
         </div>
       </div>
-      <div class="gg-step__arrow">→</div>
       <div class="gg-step">
-        <div class="gg-step__num">04</div>
+        <div class="gg-step__num">04 / REVIEW</div>
         <div class="gg-step__body">
-          <strong>Review</strong>
+          <strong>Loop or finish</strong>
           <p>No more tool calls? Task complete. Otherwise loop back — up to <code>max_steps</code>.</p>
         </div>
       </div>
@@ -221,20 +226,21 @@
   </div>
 </section>
 
-<!-- ═══════════════ OPEN SOURCE ═══════════════ -->
+<!-- ═══════════════ OSS ═══════════════ -->
 <section class="gg-oss">
   <div class="gg-oss__inner">
-    <h2 class="gg-section-h">Free and open source</h2>
+    <span class="gg-section-label">Open source</span>
+    <h2 class="gg-section-h" style="margin-top:14px">Free, forever.</h2>
     <p class="gg-section-sub">
-      MIT licensed. All source code is on GitHub.
+      MIT licensed. All source code on GitHub.
       Contributions, issues, and forks are welcome.
     </p>
-    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
       <a href="https://github.com/GantryGraph/GantryGraph" class="gg-btn gg-btn--primary" target="_blank">
         View on GitHub →
       </a>
       <a href="{{ 'quickstart/' | url }}" class="gg-btn gg-btn--ghost">
-        Start building
+        Read the docs
       </a>
     </div>
   </div>
@@ -250,7 +256,7 @@
     <div class="gg-footer__links">
       <a href="{{ 'quickstart/' | url }}">Quickstart</a>
       <a href="{{ 'how-to/desktop-agent/' | url }}">Guides</a>
-      <a href="{{ 'api-reference/' | url }}">API Ref</a>
+      <a href="{{ 'api-reference/' | url }}">API Reference</a>
       <a href="https://github.com/GantryGraph/GantryGraph" target="_blank">GitHub</a>
       <a href="https://pypi.org/project/gantrygraph/" target="_blank">PyPI</a>
     </div>
@@ -259,4 +265,5 @@
     </div>
   </div>
 </footer>
+
 {% endblock %}

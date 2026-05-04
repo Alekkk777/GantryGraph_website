@@ -20,7 +20,7 @@ Use a swarm when:
 ```python
 from gantrygraph.swarm import GantrySupervisor
 from gantrygraph import GantryEngine
-from gantrygraph.actions import FileSystemTools, ShellTool
+from gantrygraph.actions import FileSystemTools, ShellTools
 from langchain_anthropic import ChatAnthropic
 
 llm = ChatAnthropic(model="claude-sonnet-4-6")
@@ -30,7 +30,7 @@ def make_worker():
         llm=llm,
         tools=[
             FileSystemTools(workspace="/app"),
-            ShellTool(workspace="/app", allowed_commands=["python", "pytest", "ruff"]),
+            ShellTools(workspace="/app", allowed_commands=["python", "pytest", "ruff"]),
         ],
         max_steps=20,
     )
@@ -77,7 +77,7 @@ coder = GantryEngine(
     llm=llm,
     tools=[
         FileSystemTools(workspace="/app"),
-        ShellTool(workspace="/app", allowed_commands=["python", "pytest"]),
+        ShellTools(workspace="/app", allowed_commands=["python", "pytest"]),
     ],
     max_steps=20,
 )
