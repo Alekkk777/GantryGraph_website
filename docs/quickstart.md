@@ -1,108 +1,56 @@
 # Quickstart
 
-Get a working autonomous agent in under 5 minutes.
+> Run your first autonomous agent in under 10 lines.
 
-## Install
-
-```bash
-pip install gantrygraph
-```
-
-For desktop, browser, or cloud features install the relevant extras:
+## Step 1 — Install
 
 ```bash
-pip install 'gantrygraph[desktop]'   # screenshot + mouse/keyboard
-pip install 'gantrygraph[browser]'   # Playwright web automation
-pip install 'gantrygraph[cloud]'     # REST API server
+pip install gantrygraph langchain-anthropic
 ```
 
-## Step 1 — A minimal agent
-
-The simplest agent: an LLM that can reason and respond.
+## Step 2 — Minimal agent
 
 ```python
 from gantrygraph import GantryEngine
 from langchain_anthropic import ChatAnthropic
 
-agent = GantryEngine(
-    llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    max_steps=5,
-)
-
-result = agent.run("What is 17 × 23? Show your working.")
-print(result)
+agent = GantryEngine(llm=ChatAnthropic(model="claude-sonnet-4-6"))
+print(agent.run("What is 2 + 2?"))
 ```
 
-`GantryEngine` manages the observe → think → act → review loop.
-`max_steps` prevents infinite loops. `run()` is synchronous — use `arun()` in async code.
+`GantryEngine` wraps any LangChain `BaseChatModel` in an `observe → think → act → review` loop. `run()` blocks until the task finishes and returns the final answer as a string; use `arun()` in async code.
 
-## Step 2 — Give it a tool
-
-Turn any function into an agent tool with `@gantry_tool`.
-The LLM reads the docstring to understand what the tool does.
+## Step 3 — Add a tool
 
 ```python
 from gantrygraph import GantryEngine, gantry_tool
 from langchain_anthropic import ChatAnthropic
 
 @gantry_tool
-async def get_weather(city: str) -> str:
-    """Return the current weather for a city."""
-    return f"Sunny, 22°C in {city}"   # replace with a real API call
+def word_count(text: str) -> str:
+    """Count the number of words in a string."""
+    return str(len(text.split()))
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[get_weather],
-    max_steps=5,
+    tools=[word_count],
 )
-
-print(agent.run("What's the weather in Milan and Tokyo?"))
+print(agent.run("How many words are in 'the quick brown fox'?"))
 ```
 
-!!! tip "Sync or async — both work"
-    `@gantry_tool` wraps both `def` and `async def` functions.
-    Prefer `async def` for I/O-heavy tools.
-
-## Step 3 — Read and write files safely
-
-`FileSystemTools` sandboxes the agent inside a directory.
-It can never touch files outside `workspace`, even if the LLM tries.
-
-```python
-from gantrygraph import GantryEngine
-from gantrygraph.actions import FileSystemTools, ShellTools
-from langchain_anthropic import ChatAnthropic
-
-agent = GantryEngine(
-    llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[
-        FileSystemTools(workspace="/my/project"),
-        ShellTools(
-            workspace="/my/project",
-            allowed_commands=["python", "pytest", "git"],
-        ),
-    ],
-    max_steps=20,
-)
-
-result = agent.run(
-    "Run the test suite. If any tests fail, read the relevant source files "
-    "and fix the failures. Then run the tests again to confirm."
-)
-print(result)
-```
+`@gantry_tool` turns any `def` or `async def` function into a tool the LLM can call. The docstring becomes the tool description — make it specific.
 
 ## What's next
 
-Pick the guide that matches what you want to build:
-
 | I want to… | Guide |
 |---|---|
-| Control the mouse and keyboard | [Automate the desktop](how-to/desktop-agent.md) |
-| Scrape or interact with websites | [Automate a browser](how-to/browser-agent.md) |
-| Connect GitHub, Notion, Postgres | [Connect MCP tools](how-to/mcp.md) |
-| Require a human to approve actions | [Add human approval](how-to/human-approval.md) |
-| Run tasks in parallel | [Multi-agent swarm](how-to/swarm.md) |
-| Expose the agent as a REST API | [Deploy as an API](how-to/cloud-deploy.md) |
-
-Or read [The agent loop](concepts/engine.md) to understand how everything fits together.
+| Control the desktop with mouse and keyboard | [Create a desktop agent](how-to/desktop-agent.md) |
+| Scrape or automate websites | [Create a browser agent](how-to/browser-agent.md) |
+| Connect external services via MCP | [Connect external services with MCP](how-to/mcp.md) |
+| Require human sign-off before risky actions | [Require human approval before actions](how-to/human-approval.md) |
+| Run multiple agents in parallel | [Run agents in parallel](how-to/swarm.md) |
+| Deploy as a REST API | [Deploy as a REST API](how-to/cloud-deploy.md) |
+| Read and write files | [Read and write files](how-to/filesystem.md) |
+| Build custom tools | [Build custom tools](how-to/custom-tools.md) |
+| Add memory across tasks | [Add memory to your agent](how-to/memory.md) |
+| Monitor what the agent is doing | [Monitor agent execution](how-to/observability.md) |

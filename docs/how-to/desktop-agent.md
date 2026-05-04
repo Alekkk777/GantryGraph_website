@@ -1,8 +1,6 @@
-# Automate the desktop
+# Create a Desktop Agent
 
-This guide shows you how to build an agent that takes screenshots
-and controls the mouse and keyboard — like a human at a computer,
-but autonomous.
+> Build an agent that takes screenshots and controls the mouse and keyboard.
 
 ## Prerequisites
 
@@ -10,7 +8,7 @@ but autonomous.
 pip install 'gantrygraph[desktop]'
 ```
 
-On Linux, a display server is required:
+On headless Linux, start a virtual display first:
 
 ```bash
 apt-get install -y xvfb
@@ -18,13 +16,12 @@ Xvfb :99 -screen 0 1280x720x24 &
 export DISPLAY=:99
 ```
 
-## A working agent
+## Step 1 — Minimal desktop agent
 
 ```python
 from gantrygraph import GantryEngine
 from gantrygraph.perception import DesktopScreen
 from gantrygraph.actions import MouseKeyboardTools
-from gantrygraph.security import BudgetPolicy
 from langchain_anthropic import ChatAnthropic
 
 agent = GantryEngine(
@@ -32,54 +29,24 @@ agent = GantryEngine(
     perception=DesktopScreen(max_resolution=(1280, 720)),
     tools=[MouseKeyboardTools()],
     max_steps=30,
-    budget=BudgetPolicy(max_wall_seconds=120),
-    system_prompt=(
-        "You are a desktop automation agent. "
-        "After each action, wait for the screen to update before proceeding."
-    ),
 )
 
-agent.run("Open the terminal, run 'echo hello world', and close it.")
+agent.run("Open the terminal and run 'echo hello world'.")
 ```
 
-**What happens on each loop iteration:**
+`DesktopScreen` takes an OS-native screenshot before every think step. `MouseKeyboardTools` exposes `mouse_click`, `keyboard_type`, `mouse_scroll`, `keyboard_hotkey`, and `mouse_move` to the LLM.
 
-1. `DesktopScreen` takes a screenshot of your monitor
-2. The LLM receives the image and decides what to click, type, or press
-3. `MouseKeyboardTools` executes the action
-4. The loop repeats until the task is done
-
-## Available mouse and keyboard tools
-
-| Tool | What it does |
-|------|--------------|
-| `mouse_click` | Click at (x, y) coordinates |
-| `mouse_move` | Move the cursor to (x, y) |
-| `key_press` | Press a key combination (e.g. `ctrl+c`) |
-| `type_text` | Type a string character by character |
-| `screenshot` | Take a screenshot (also happens automatically via perception) |
-
-## Tips for reliable automation
-
-**Use lower resolution.** Smaller screenshots cost fewer tokens and let the LLM
-focus on relevant UI elements. `(1024, 768)` works well for most tasks.
-`(1280, 720)` is a safe maximum for Claude.
-
-**Set a time budget.** GUI state can change unexpectedly. Always add a `BudgetPolicy`
-for unattended agents so a stuck loop doesn't run forever.
-
-**Write a descriptive system prompt.** Tell the agent which application it's using,
-what success looks like, and any app-specific quirks.
-
-**Combine with file tools.** Desktop agents often need to read or write files
-alongside GUI interaction:
+## Step 2 — Add file tools
 
 ```python
-from gantrygraph.actions import FileSystemTools
+from gantrygraph import GantryEngine
+from gantrygraph.perception import DesktopScreen
+from gantrygraph.actions import MouseKeyboardTools, FileSystemTools
+from langchain_anthropic import ChatAnthropic
 
 agent = GantryEngine(
-    llm=...,
-    perception=DesktopScreen(),
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    perception=DesktopScreen(max_resolution=(1280, 720)),
     tools=[
         MouseKeyboardTools(),
         FileSystemTools(workspace="/my/project"),
@@ -87,7 +54,71 @@ agent = GantryEngine(
     max_steps=40,
 )
 
-agent.run(
-    "Open VS Code, edit src/config.py to set DEBUG=False, save, and close."
-)
+agent.run("Open VS Code, edit src/config.py to set DEBUG=False, save, and close.")
 ```
+
+`FileSystemTools` lets the agent read and write files inside the workspace without leaving the directory boundary.
+
+## Step 3 — Run
+
+```python
+result = agent.run("Screenshot the desktop and describe what you see.")
+print(result)
+```
+
+`run()` blocks until the task completes. Use `arun()` in async contexts.
+
+---
+
+## Complete example
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.perception import DesktopScreen
+from gantrygraph.actions import MouseKeyboardTools, FileSystemTools
+from gantrygraph.security import BudgetPolicy
+from langchain_anthropic import ChatAnthropic
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    perception=DesktopScreen(max_resolution=(1280, 720), monitor=1),
+    tools=[
+        MouseKeyboardTools(fail_safe=True, pause=0.05),
+        FileSystemTools(workspace="/my/project"),
+    ],
+    budget=BudgetPolicy(max_steps=30, max_wall_seconds=120.0),
+    system_prompt=(
+        "You are a desktop automation agent. "
+        "After each action, wait for the screen to update before proceeding."
+    ),
+    max_steps=30,
+)
+
+result = agent.run(
+    "Open the terminal, navigate to /my/project, run pytest, "
+    "and report whether the tests passed."
+)
+print(result)
+```
+
+---
+
+## Variants
+
+- **Lower resolution to save tokens:** `DesktopScreen(max_resolution=(1024, 768))`
+- **Second monitor:** `DesktopScreen(monitor=2)`
+- **Slower, safer actions:** `MouseKeyboardTools(pause=0.2)`
+- **Disable fail-safe (pyautogui corner abort):** `MouseKeyboardTools(fail_safe=False)`
+- **Use the preset shortcut:** `from gantrygraph.presets import desktop_agent; agent = desktop_agent(llm)`
+
+## Troubleshooting
+
+**`ImportError: MouseKeyboardTools requires the [desktop] extra`** — run `pip install 'gantrygraph[desktop]'`.
+
+**`KeyError` or blank screenshot on Linux** — ensure `DISPLAY` is set and Xvfb is running: `export DISPLAY=:99`.
+
+**Agent clicks wrong coordinates** — lower the resolution (`max_resolution=(1024, 768)`) so the LLM gets a sharper, less cluttered view.
+
+---
+
+**Next:** [Create a browser agent](browser-agent.md) · [Read and write files](filesystem.md) · [Require human approval before actions](human-approval.md)

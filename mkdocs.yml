@@ -48,21 +48,24 @@ theme:
 
 nav:
   - Home: index.md
-  - Get started: quickstart.md
-  - I want to...:
-      - Automate the desktop: how-to/desktop-agent.md
-      - Automate a browser: how-to/browser-agent.md
-      - Read and write files: how-to/filesystem.md
-      - Connect GitHub, Notion, Postgres…: how-to/mcp.md
-      - Add human approval: how-to/human-approval.md
-      - Run tasks in parallel: how-to/swarm.md
-      - Make the agent remember things: how-to/memory.md
-      - Watch what the agent does: how-to/observability.md
-      - Build my own tool: how-to/custom-tools.md
-      - Deploy as a REST API: how-to/cloud-deploy.md
-  - How it works:
+  - Quickstart: quickstart.md
+  - Concepts:
       - The agent loop: concepts/engine.md
-      - Perception sources: concepts/perception.md
+      - Perception: concepts/perception.md
+      - Tools & actions: concepts/tools.md
+      - Guardrails: concepts/guardrails.md
+      - Memory: concepts/memory.md
+  - Guides:
+      - Desktop agent: how-to/desktop-agent.md
+      - Browser agent: how-to/browser-agent.md
+      - Connect MCP tools: how-to/mcp.md
+      - Human approval: how-to/human-approval.md
+      - Parallel agents: how-to/swarm.md
+      - Deploy to production: how-to/cloud-deploy.md
+      - Files & shell: how-to/filesystem.md
+      - Agent memory: how-to/memory.md
+      - Observability: how-to/observability.md
+      - Custom tools: how-to/custom-tools.md
   - API Reference: api-reference.md
 
 plugins:

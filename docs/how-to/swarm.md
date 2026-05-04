@@ -1,25 +1,12 @@
-# Run multiple agents
+# Run Agents in Parallel
 
-When a task is too complex for one agent — or can be split into
-parallel workstreams — use `GantrySupervisor`.
+> Decompose a complex task across multiple worker agents that run concurrently and synthesize a final answer.
 
-The supervisor LLM decomposes your task into subtasks, dispatches each to
-a worker agent, runs all workers in parallel, and synthesises a final answer.
-
-## When to use a swarm
-
-Use a swarm when:
-
-- The task has **independent parts** that don't need to share state
-  (e.g. "run tests AND update docs AND check security")
-- You want **specialist agents** — one for web research, one for code, one for databases
-- You want **speed** — parallel workers finish faster than sequential steps
-
-## Homogeneous swarm — same agent, N copies
+## Step 1 — Same-agent swarm
 
 ```python
-from gantrygraph.swarm import GantrySupervisor
 from gantrygraph import GantryEngine
+from gantrygraph.swarm import GantrySupervisor
 from gantrygraph.actions import FileSystemTools, ShellTools
 from langchain_anthropic import ChatAnthropic
 
@@ -38,24 +25,22 @@ def make_worker():
 supervisor = GantrySupervisor(
     llm=llm,
     worker_factory=make_worker,
-    n_workers=4,
+    max_workers=4,
 )
 
-result = await supervisor.arun(
+result = supervisor.run(
     "Run all tests, fix any failures, lint the codebase, and update CHANGELOG.md."
 )
 print(result)
 ```
 
-The supervisor splits the task into up to 4 subtasks and runs them at the same time.
+The supervisor LLM decomposes the task into up to `max_workers` subtasks, runs one worker per subtask with `asyncio.gather`, and synthesizes a final answer. Each worker gets a fresh `GantryEngine` instance from the factory.
 
-## Heterogeneous swarm — specialist agents
-
-When different parts of the task need different tools, define each worker separately:
+## Step 2 — Specialist swarm
 
 ```python
-from gantrygraph.swarm import GantrySupervisor, WorkerSpec
 from gantrygraph import GantryEngine
+from gantrygraph.swarm import GantrySupervisor, WorkerSpec
 from gantrygraph.perception import WebPage
 from gantrygraph.actions import BrowserTools, FileSystemTools
 from gantrygraph.mcp import MCPClient
@@ -63,61 +48,129 @@ from langchain_anthropic import ChatAnthropic
 
 llm = ChatAnthropic(model="claude-sonnet-4-6")
 
-# Web researcher
 web = WebPage(url="https://google.com", headless=True)
-researcher = GantryEngine(
-    llm=llm,
-    perception=web,
-    tools=[BrowserTools(web_page=web)],
-    max_steps=15,
-)
-
-# Code worker
-coder = GantryEngine(
-    llm=llm,
-    tools=[
-        FileSystemTools(workspace="/app"),
-        ShellTools(workspace="/app", allowed_commands=["python", "pytest"]),
-    ],
-    max_steps=20,
-)
-
-# Database worker
-db_agent = GantryEngine(
-    llm=llm,
-    tools=[MCPClient("npx -y @modelcontextprotocol/server-postgres postgresql://...")],
-    max_steps=10,
-)
 
 supervisor = GantrySupervisor(
     llm=llm,
     workers=[
-        WorkerSpec(name="researcher", engine=researcher,
-                   description="Browses the web and retrieves up-to-date information."),
-        WorkerSpec(name="coder",      engine=coder,
-                   description="Reads and edits source code, runs tests."),
-        WorkerSpec(name="db_analyst", engine=db_agent,
-                   description="Queries the production database for metrics."),
+        WorkerSpec(
+            name="researcher",
+            engine=GantryEngine(
+                llm=llm,
+                perception=web,
+                tools=[BrowserTools(web_page=web)],
+                max_steps=15,
+            ),
+            description="Browses the web and retrieves up-to-date information.",
+        ),
+        WorkerSpec(
+            name="coder",
+            engine=GantryEngine(
+                llm=llm,
+                tools=[
+                    FileSystemTools(workspace="/app"),
+                    ShellTools(workspace="/app", allowed_commands=["python", "pytest"]),
+                ],
+                max_steps=20,
+            ),
+            description="Reads and edits source code, runs tests.",
+        ),
+        WorkerSpec(
+            name="db_analyst",
+            engine=GantryEngine(
+                llm=llm,
+                tools=[MCPClient("npx -y @modelcontextprotocol/server-postgres postgresql://localhost/mydb")],
+                max_steps=10,
+            ),
+            description="Queries the production database for metrics.",
+        ),
     ],
 )
 
-result = await supervisor.arun(
+result = supervisor.run(
     "Research the latest OAuth 2.0 spec changes, update our auth module to comply, "
     "and pull last week's login failure stats from the database."
 )
+print(result)
 ```
 
-## Reading individual worker results
+When `workers=` is provided, the supervisor LLM reads each `WorkerSpec.description` and routes subtasks to the most appropriate specialist. Unrecognised assignments fall back to the first worker.
+
+## Step 3 — Read results
 
 ```python
-supervisor_result = await supervisor.arun("...")
+import asyncio
 
-for worker_result in supervisor_result.results:
-    print(f"[{worker_result.worker_name}] {worker_result.result}")
+async def main():
+    result = await supervisor.arun("Analyse these 10 documents and summarise findings.")
+    # result is the synthesized final answer as a plain string
+    print(result)
+
+asyncio.run(main())
 ```
 
-## Notes on concurrency
+`GantrySupervisor.run()` (sync) and `.arun()` (async) both return the synthesized answer as a string. Individual worker outputs are merged by the supervisor LLM; they are not exposed separately in the public API.
 
-- Workers run with `asyncio.gather` — all in the same event loop
-- Each worker has its own `GantryEngine` lifecycle (separate tool state)
-- For CPU-intensive or very long-running workers, consider separate processes
+---
+
+## Complete example
+
+```python
+import asyncio
+from gantrygraph import GantryEngine
+from gantrygraph.swarm import GantrySupervisor, WorkerSpec
+from gantrygraph.actions import FileSystemTools, ShellTools
+from langchain_anthropic import ChatAnthropic
+
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+
+supervisor = GantrySupervisor(
+    llm=llm,
+    workers=[
+        WorkerSpec(
+            name="shell_expert",
+            engine=GantryEngine(
+                llm=llm,
+                tools=[ShellTools(workspace="/tmp", allowed_commands=["find", "du", "ls"])],
+                max_steps=10,
+            ),
+            description="Runs shell commands and explores the filesystem.",
+        ),
+        WorkerSpec(
+            name="file_editor",
+            engine=GantryEngine(
+                llm=llm,
+                tools=[FileSystemTools(workspace="/tmp")],
+                max_steps=10,
+            ),
+            description="Reads, writes, and edits files.",
+        ),
+    ],
+)
+
+result = asyncio.run(supervisor.arun(
+    "Find all .log files in /tmp, read their first 10 lines, "
+    "and write a combined summary to /tmp/log-summary.txt."
+))
+print(result)
+```
+
+---
+
+## Variants
+
+- **Cap parallel workers:** `GantrySupervisor(llm=llm, worker_factory=make_worker, max_workers=2)`
+- **Async entry point:** `result = await supervisor.arun("task")`
+- **Single specialist fallback:** if the supervisor cannot match a subtask to a named worker, it falls back to `workers[0]`
+
+## Troubleshooting
+
+**`ValueError: Provide either worker_factory= or workers=`** — pass one or the other, not both.
+
+**Workers finish but the final answer is empty** — check that each worker's `GantryEngine` produces output; add `on_event=print` to a worker to inspect its execution.
+
+**Subtasks are not well-decomposed** — use a more capable LLM for the supervisor (it only calls the LLM twice: decompose and synthesize) while workers can use a cheaper model.
+
+---
+
+**Next:** [Connect external services with MCP](mcp.md) · [Require human approval before actions](human-approval.md) · [Deploy as a REST API](cloud-deploy.md)

@@ -1,11 +1,8 @@
-# Watch what the agent does
+# Monitor Agent Execution
 
-Two mechanisms let you observe the agent in real time: event callbacks for
-in-process logging, and OpenTelemetry traces for distributed systems.
+> Observe every step the agent takes — in-process callbacks, async streaming, and OpenTelemetry traces.
 
-## Get a callback on every step
-
-Pass `on_event` to receive a `GantryEvent` after each phase of the loop:
+## Step 1 — Event callback
 
 ```python
 from gantrygraph import GantryEngine
@@ -16,7 +13,6 @@ def log(event):
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[...],
     on_event=log,
     max_steps=30,
 )
@@ -24,42 +20,32 @@ agent = GantryEngine(
 agent.run("Summarise the last 10 commits in this repo.")
 ```
 
-Events fire in order: `observe → think → act → review → done`.
-Each `GantryEvent` carries:
+`on_event` fires after every phase of the loop in order: `observe → think → act → review → done`. Both sync and async callbacks are supported — use `async def log(event): ...` for non-blocking I/O.
 
-| Field        | Type                              | Contents                                   |
-|--------------|-----------------------------------|--------------------------------------------|
-| `event_type` | `str`                             | `observe`, `think`, `act`, `review`, `error`, `done` |
-| `step`       | `int`                             | Current loop iteration (1-indexed)         |
-| `data`       | `dict`                            | Step-specific payload (see below)          |
-
-### What `data` contains per event type
-
-| `event_type` | Key fields in `data`                                          |
-|--------------|---------------------------------------------------------------|
-| `observe`    | `screenshot` (bool), `tree_length` (int)                     |
-| `think`      | `tool_calls` (list of `{name, args}`)                        |
-| `act`        | `tool_name`, `args`, `result`, `approved` (bool or `None`)   |
-| `review`     | `is_done` (bool)                                             |
-| `error`      | `tool_name`, `error` (str)                                   |
-| `done`       | `result` (str), `steps` (int)                                |
-
-## Stream events asynchronously
-
-In async code, use `astream_events` to consume events as an async iterator
-instead of a callback:
+## Step 2 — Stream events asynchronously
 
 ```python
-async for event in agent.astream_events("List the 5 largest files in /tmp"):
-    print(event.event_type, event.step, event.data)
+import asyncio
+from gantrygraph import GantryEngine
+from langchain_anthropic import ChatAnthropic
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    max_steps=20,
+)
+
+async def main():
+    async for event in agent.astream_events("List the 5 largest files in /tmp"):
+        print(event.event_type, event.step, event.data)
+
+asyncio.run(main())
 ```
 
-## Export traces to Grafana / Datadog / Jaeger
+`astream_events()` is an async generator — yield each event as it is emitted rather than waiting for the full run to finish.
 
-`OTelExporter` sends structured spans to any OTLP-compatible backend.
-Each agent run becomes a root span; each loop step is a child span.
+## Step 3 — OpenTelemetry traces
 
-```python
+```bash
 pip install 'gantrygraph[telemetry]'
 ```
 
@@ -69,44 +55,90 @@ from gantrygraph.telemetry import OTelExporter
 from langchain_anthropic import ChatAnthropic
 
 exporter = OTelExporter(
-    endpoint="http://localhost:4317",   # your OTLP collector
     service_name="my-agent",
+    otlp_endpoint="http://localhost:4317",  # Grafana Alloy, Jaeger, Datadog, etc.
 )
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[...],
-    telemetry=exporter,
+    on_event=exporter.as_event_callback(),
     max_steps=30,
 )
+
+agent.run("Run the test suite.")
+exporter.force_flush()  # flush before process exit
 ```
 
-Traces include: total wall time, token counts, step durations, tool names,
-error messages, and the final result.
+`OTelExporter` creates one root span `gantrygraph.task` per run and one child span `gantrygraph.tool.<name>` per tool execution. Pass `otlp_endpoint=None` to print spans to stdout during development.
 
-## Log to the standard library
+---
 
-`on_event` can also feed Python's standard `logging` module:
-
-```python
-import logging, json
-
-logger = logging.getLogger("my_agent")
-
-def log(event):
-    logger.info(json.dumps({"event": event.event_type, "step": event.step, **event.data}))
-
-agent = GantryEngine(llm=..., on_event=log)
-```
-
-## Combine callback + traces
-
-Both mechanisms work independently — you can use them together:
+## Complete example
 
 ```python
+import asyncio
+import json
+import logging
+from gantrygraph import GantryEngine
+from gantrygraph.telemetry import OTelExporter
+from gantrygraph.actions import FileSystemTools, ShellTools
+from langchain_anthropic import ChatAnthropic
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("agent")
+
+# Both in-process logging and OTel traces, combined
+exporter = OTelExporter(service_name="ci-agent", otlp_endpoint=None)  # stdout for dev
+
+def on_event(event):
+    logger.info(json.dumps({
+        "event": event.event_type,
+        "step": event.step,
+        **event.data,
+    }))
+    # Also feed the OTel exporter
+    exporter.as_event_callback()(event)
+
 agent = GantryEngine(
-    llm=...,
-    on_event=log,
-    telemetry=OTelExporter(endpoint="http://otel-collector:4317"),
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[
+        FileSystemTools(workspace="/app"),
+        ShellTools(workspace="/app", allowed_commands=["pytest", "ruff"]),
+    ],
+    on_event=on_event,
+    max_steps=25,
 )
+
+result = asyncio.run(agent.arun("Run all tests and lint the code."))
+print(result)
+exporter.force_flush()
 ```
+
+---
+
+## GantryEvent reference
+
+| Field | Type | Contents |
+|---|---|---|
+| `event_type` | `str` | `observe`, `think`, `act`, `review`, `error`, `done` |
+| `step` | `int` | Current loop iteration (0-indexed) |
+| `data` | `dict` | Step-specific payload |
+
+## Variants
+
+- **Stdout spans (dev mode):** `OTelExporter(service_name="agent", otlp_endpoint=None)`
+- **Grafana Tempo / Jaeger:** `OTelExporter(otlp_endpoint="http://localhost:4317")`
+- **Python `logging` module:** `on_event=lambda e: logger.info("%s step=%d", e.event_type, e.step)`
+- **Filter to act events only:** `on_event=lambda e: print(e) if e.event_type == "act" else None`
+
+## Troubleshooting
+
+**`ImportError: OTelExporter requires opentelemetry`** — run `pip install 'gantrygraph[telemetry]'`.
+
+**Spans are missing from the backend** — call `exporter.force_flush()` before process exit; `BatchSpanProcessor` buffers spans and may not flush automatically.
+
+**`on_event` blocks the event loop** — use `async def on_event(event): ...` for any I/O inside the callback (database writes, HTTP requests, etc.).
+
+---
+
+**Next:** [Deploy as a REST API](cloud-deploy.md) · [Require human approval before actions](human-approval.md) · [Build custom tools](custom-tools.md)

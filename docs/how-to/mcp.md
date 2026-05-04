@@ -1,14 +1,8 @@
-# Connect MCP tools
+# Connect External Services with MCP
 
-[Model Context Protocol](https://modelcontextprotocol.io) (MCP) is an open standard
-for connecting AI agents to external services. Instead of writing custom integration
-code, you point the agent at an MCP server and it discovers all available tools
-automatically.
+> Give your agent tools from any MCP server — GitHub, Notion, Postgres, and more — without writing integration code.
 
-Popular MCP servers: GitHub, Notion, Slack, Postgres, filesystem, web search,
-and hundreds more — all work with the same two lines of code.
-
-## Connect a single server
+## Step 1 — Connect a single server
 
 ```python
 from gantrygraph import GantryEngine
@@ -27,21 +21,19 @@ result = agent.run("List every file modified today and show the 3 largest.")
 print(result)
 ```
 
-`MCPClient` starts the server subprocess when the agent run begins and
-terminates it when it ends — even on errors.
+`MCPClient` launches the server subprocess, discovers its tools automatically, and terminates the process when the run ends — even on errors. `GantryEngine` manages the full lifecycle.
 
-## Connect multiple servers
-
-Use `MCPToolRegistry` to give the agent tools from several servers at once.
-All tools are flattened into one list and de-duplicated by name.
+## Step 2 — Connect multiple servers
 
 ```python
+from gantrygraph import GantryEngine
 from gantrygraph.mcp import MCPClient, MCPToolRegistry
+from langchain_anthropic import ChatAnthropic
 
 registry = MCPToolRegistry([
     MCPClient("npx -y @modelcontextprotocol/server-filesystem /workspace"),
     MCPClient("npx -y @modelcontextprotocol/server-github"),
-    MCPClient("npx -y @modelcontextprotocol/server-postgres postgresql://..."),
+    MCPClient("npx -y @modelcontextprotocol/server-postgres postgresql://localhost/mydb"),
 ])
 
 agent = GantryEngine(
@@ -51,29 +43,30 @@ agent = GantryEngine(
 )
 
 result = agent.run(
-    "Find all open PRs tagged 'bug' in the repo, "
-    "check which ones have failing tests in the database, "
-    "and write a summary to /workspace/report.md."
+    "Find all open PRs tagged 'bug', check which ones have failing tests in "
+    "the database, and write a report to /workspace/report.md."
 )
+print(result)
 ```
 
-## Mix MCP tools with custom tools
+`MCPToolRegistry` opens all clients concurrently and presents their tools as a single flat list. Pass the registry as one item in `tools=`.
 
-You can combine `MCPClient` with `@gantry_tool` functions and built-in action groups:
+## Step 3 — Mix MCP tools with custom tools
 
 ```python
 from gantrygraph import GantryEngine, gantry_tool
 from gantrygraph.mcp import MCPClient
 from gantrygraph.actions import FileSystemTools
+from langchain_anthropic import ChatAnthropic
 
 @gantry_tool
 async def notify_slack(message: str) -> str:
-    """Post an urgent notification to #alerts on Slack."""
-    await slack.post("#alerts", message)
+    """Post an urgent notification to the #alerts Slack channel."""
+    await slack_client.post("#alerts", message)
     return "posted"
 
 agent = GantryEngine(
-    llm=...,
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
     tools=[
         MCPClient("npx -y @modelcontextprotocol/server-github"),
         FileSystemTools(workspace="/workspace"),
@@ -83,26 +76,58 @@ agent = GantryEngine(
 )
 ```
 
-## Use MCP tools directly (without an agent)
+`BaseAction` instances, `@gantry_tool` functions, and `MCPClient` connectors all go in the same `tools=` list and are flattened into one registry.
 
-If you just want to list or call tools from an MCP server programmatically:
+---
+
+## Complete example
 
 ```python
 import asyncio
-from gantrygraph.mcp import MCPClient
+from gantrygraph import GantryEngine
+from gantrygraph.mcp import MCPClient, MCPToolRegistry
+from gantrygraph.memory import InMemoryStore
+from langchain_anthropic import ChatAnthropic
 
-async def main():
-    async with MCPClient("npx -y @modelcontextprotocol/server-filesystem /tmp") as client:
-        tools = client.get_tools()
-        print([t.name for t in tools])
-        # ['read_file', 'write_file', 'list_directory', ...]
+llm = ChatAnthropic(model="claude-sonnet-4-6")
 
-asyncio.run(main())
+registry = MCPToolRegistry([
+    MCPClient("npx -y @modelcontextprotocol/server-github"),
+    MCPClient("npx -y @modelcontextprotocol/server-filesystem /workspace"),
+])
+
+agent = GantryEngine(
+    llm=llm,
+    tools=[registry],
+    memory=InMemoryStore(),
+    max_steps=40,
+)
+
+# Use arun() to avoid blocking in async contexts
+result = asyncio.run(agent.arun(
+    "Summarise the last 5 merged PRs in the repo, "
+    "save the summary to /workspace/pr-digest.md, "
+    "and return the filename."
+))
+print(result)
 ```
 
-## Finding MCP servers
+---
 
-Browse the official registry at [modelcontextprotocol.io/servers](https://modelcontextprotocol.io/servers)
-or search npm for packages starting with `@modelcontextprotocol/`.
+## Variants
 
-Any MCP-compatible server works — including ones you build yourself.
+- **Pass env vars to the server process:** `MCPClient("npx -y @mcp/github", env={"GITHUB_TOKEN": "ghp_..."})`
+- **Use without an agent (inspect tools directly):** call `async with MCPClient(...) as c: print(c.get_tools())`
+- **Preset shortcut:** `from gantrygraph.presets import mcp_agent; agent = mcp_agent(llm, "npx -y @mcp/github")`
+
+## Troubleshooting
+
+**`ImportError: mcp is a core dependency`** — run `pip install gantrygraph` (no extras needed, `mcp` ships with the base package).
+
+**Server subprocess fails to start** — confirm `npx` is on your PATH and the package name is correct. Test standalone: `npx -y @modelcontextprotocol/server-filesystem /tmp`.
+
+**Tools not found after `aenter`** — `MCPClient.get_tools()` returns an empty list when called before the client enters its context manager. Let `GantryEngine` manage the lifecycle by passing the client to `tools=` rather than entering it manually.
+
+---
+
+**Next:** [Build custom tools](custom-tools.md) · [Run agents in parallel](swarm.md) · [Connect external services with MCP](mcp.md)

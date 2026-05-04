@@ -1,50 +1,46 @@
-# Add human approval
+# Require Human Approval Before Actions
 
-This guide shows you how to pause the agent before it executes a
-dangerous action and wait for a human to say yes or no.
+> Gate dangerous tool calls so a human can approve or deny them before the agent proceeds.
 
-Two patterns are available:
-
-- **Callback mode** — a Python function is called synchronously. Good for CLI tools
-  or scripts where you're watching the terminal.
-- **Suspend / resume mode** — the agent pauses and you resume it later via an API call.
-  Good for web apps and workflows where the human is not at the keyboard.
-
-## Pattern 1 — Approval callback (CLI / scripts)
+## Step 1 — Define an approval callback
 
 ```python
-from gantrygraph import GantryEngine
-from gantrygraph.actions import ShellTools
-from gantrygraph.security import GuardrailPolicy
-from langchain_anthropic import ChatAnthropic
-
 async def ask_human(tool_name: str, args: dict) -> bool:
-    """Called before any tool in requires_approval is executed."""
+    """Called before every tool in GuardrailPolicy.requires_approval."""
     print(f"\nAgent wants to run: {tool_name}")
     print(f"Arguments: {args}")
     answer = input("Allow? [y/N] ").strip().lower()
     return answer == "y"
+```
 
-shell = ShellTools(workspace="/my/project", allowed_commands=["git", "rm"])
+The callback receives the tool name and its arguments. Return `True` to allow, `False` to deny. Both sync and async callbacks are supported.
+
+## Step 2 — Wire the guardrail
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.actions import ShellTools, FileSystemTools
+from gantrygraph.security import GuardrailPolicy
+from langchain_anthropic import ChatAnthropic
 
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[shell],
-    guardrail=GuardrailPolicy(requires_approval={"shell_run"}),
+    tools=[
+        FileSystemTools(workspace="/my/project"),
+        ShellTools(workspace="/my/project", allowed_commands=["git", "rm"]),
+    ],
+    guardrail=GuardrailPolicy(requires_approval={"shell_run", "file_delete"}),
     approval_callback=ask_human,
     max_steps=20,
 )
 
-result = agent.run("Clean up the temp files and commit the changes.")
+result = agent.run("Clean up temp files and commit the changes.")
+print(result)
 ```
 
-If `ask_human` returns `False`, the tool call is skipped and the LLM is told
-the action was denied. It can then try a different approach.
+Only the tools listed in `requires_approval` trigger the callback. All other tools run freely. When the callback returns `False`, the LLM is told the action was denied and can try a different approach.
 
-## Pattern 2 — Suspend and resume (web apps / APIs)
-
-Use this when the agent runs in a server and the human approves via a UI
-or chat interface.
+## Step 3 — Suspend and resume pattern (web apps)
 
 ```python
 from gantrygraph import GantryEngine, AgentSuspended
@@ -56,55 +52,78 @@ agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
     tools=[ShellTools(workspace="/app")],
     guardrail=GuardrailPolicy(requires_approval={"shell_run"}),
-    enable_suspension=True,
+    enable_suspension=True,  # uses LangGraph interrupt — no callback needed
 )
 
-# First call — runs until it hits a guarded tool
+# First call — runs until a guarded tool is reached, then raises AgentSuspended
 try:
-    result = await agent.arun("Deploy to production", thread_id="deploy-job-1")
-except AgentSuspended as e:
-    pending_tool = e.data["tool_name"]
-    pending_args = e.data["args"]
-    print(f"Suspended: agent wants to run {pending_tool}({pending_args})")
-    # Store e.thread_id and wait for the human to respond via your UI
+    result = await agent.arun("Deploy to production.", thread_id="deploy-001")
+except AgentSuspended as exc:
+    print(f"Suspended — thread_id: {exc.thread_id}")
+    print(f"Pending: {exc.data}")
+    # Store exc.thread_id and wait for the human to respond
 
-# Later — after the human approves
-result = await agent.resume(thread_id="deploy-job-1", approved=True)
+# Later — after the human approves via your UI or chat
+result = await agent.resume(thread_id="deploy-001", approved=True)
 print(result)
 ```
 
-The `thread_id` lets you persist the suspension across HTTP requests or
-message queues. The agent resumes exactly where it left off.
+`enable_suspension=True` auto-creates a `MemorySaver` checkpointer. The `thread_id` uniquely identifies the paused run so it can be resumed across HTTP requests or message queues.
 
-## Combining with the cloud server
+---
 
-The built-in REST server handles suspend/resume automatically.
-See [Deploy as a REST API](cloud-deploy.md) for the `/resume/{job_id}` endpoint.
-
-## Guarding specific tools
-
-`GuardrailPolicy.requires_approval` takes a set of tool names.
-Only those tools trigger the approval gate — all others run freely.
+## Complete example
 
 ```python
-from gantrygraph.security import GuardrailPolicy
+import asyncio
+from gantrygraph import GantryEngine, AgentSuspended
+from gantrygraph.actions import ShellTools, FileSystemTools
+from gantrygraph.security import GuardrailPolicy, BudgetPolicy
+from langchain_anthropic import ChatAnthropic
 
-# Only block file deletion and shell commands — reads and writes are fine
-guardrail = GuardrailPolicy(
-    requires_approval={"file_delete", "shell_run"}
-)
-```
-
-You can combine this with `BudgetPolicy` to also cap runtime:
-
-```python
-from gantrygraph.security import BudgetPolicy, GuardrailPolicy
+# Synchronous CLI approval
+async def cli_approval(tool_name: str, args: dict) -> bool:
+    print(f"\n[APPROVAL REQUIRED] {tool_name}")
+    for k, v in args.items():
+        print(f"  {k}: {v}")
+    return input("Allow? [y/N] ").strip().lower() == "y"
 
 agent = GantryEngine(
-    llm=...,
-    tools=[...],
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[
+        FileSystemTools(workspace="/my/project"),
+        ShellTools(workspace="/my/project", allowed_commands=["git", "pytest", "rm"]),
+    ],
     guardrail=GuardrailPolicy(requires_approval={"shell_run", "file_delete"}),
-    budget=BudgetPolicy(max_steps=30, max_wall_seconds=300),
-    approval_callback=ask_human,
+    approval_callback=cli_approval,
+    budget=BudgetPolicy(max_steps=30, max_wall_seconds=300.0),
+    max_steps=30,
 )
+
+result = asyncio.run(agent.arun(
+    "Run the test suite, delete all __pycache__ directories, "
+    "and commit the result."
+))
+print(result)
 ```
+
+---
+
+## Variants
+
+- **Approve only deletions:** `GuardrailPolicy(requires_approval={"file_delete"})`
+- **Approve all shell commands:** `GuardrailPolicy(requires_approval={"shell_run"})`
+- **Async Slack approval:** define `async def ask_slack(tool_name, args) -> bool:` and post to a Slack channel — both sync and async callbacks work
+- **Suspend/resume via REST:** use the built-in `serve()` server — see [Deploy as a REST API](cloud-deploy.md) for `POST /resume/{job_id}`
+
+## Troubleshooting
+
+**Callback never fires** — verify the tool name in `requires_approval` exactly matches the tool's `name` attribute (e.g. `"shell_run"`, not `"ShellTools"`).
+
+**`resume()` raises `RuntimeError: resume() requires a checkpointer`** — pass `enable_suspension=True` or a custom `checkpointer=` when constructing `GantryEngine`.
+
+**Agent loops after denial** — set a `BudgetPolicy` with `max_steps` to stop the agent from repeatedly attempting the same denied action.
+
+---
+
+**Next:** [Deploy as a REST API](cloud-deploy.md) · [Read and write files](filesystem.md) · [Monitor agent execution](observability.md)

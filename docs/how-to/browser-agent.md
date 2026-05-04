@@ -1,7 +1,6 @@
-# Automate a browser
+# Create a Browser Agent
 
-This guide shows you how to build an agent that navigates websites,
-fills forms, clicks buttons, and extracts data — using a real Chromium browser.
+> Build an agent that navigates websites, extracts data, and fills forms using a real Chromium browser.
 
 ## Prerequisites
 
@@ -10,7 +9,7 @@ pip install 'gantrygraph[browser]'
 playwright install chromium
 ```
 
-## A working agent
+## Step 1 — Minimal browser agent
 
 ```python
 from gantrygraph import GantryEngine
@@ -18,7 +17,6 @@ from gantrygraph.perception import WebPage
 from gantrygraph.actions import BrowserTools
 from langchain_anthropic import ChatAnthropic
 
-# Share the same browser between perception and actions
 web = WebPage(url="https://news.ycombinator.com", headless=True)
 
 agent = GantryEngine(
@@ -28,31 +26,41 @@ agent = GantryEngine(
     max_steps=20,
 )
 
+result = agent.run("Find the top 5 stories and return their titles and links.")
+print(result)
+```
+
+Passing the same `WebPage` instance to both `perception=` and `BrowserTools(web_page=web)` ensures they share one browser tab. The agent sees a screenshot and the accessibility tree on every step.
+
+## Step 2 — Scrape data without perception
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.actions import BrowserTools
+from langchain_anthropic import ChatAnthropic
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[BrowserTools(headless=True)],
+    max_steps=10,
+)
+
 result = agent.run(
-    "Find the top 5 stories on the front page and return their titles and links."
+    "Go to https://pypi.org/project/gantrygraph/ and return the latest version number."
 )
 print(result)
 ```
 
-Passing the same `WebPage` to both `perception` and `BrowserTools` means
-they share the same browser tab. The agent sees a screenshot plus the page's
-accessibility tree on every step, giving it precise context for clicking.
+Skipping `perception=` omits screenshots from every loop step, which cuts token cost significantly for pure-extraction tasks.
 
-## Available browser tools
-
-| Tool | What it does |
-|------|--------------|
-| `browser_navigate` | Open a URL |
-| `browser_click` | Click a CSS selector or XPath |
-| `browser_fill` | Type text into an input field |
-| `browser_get_text` | Return visible text from an element or the whole page |
-| `browser_get_url` | Return the current URL |
-
-## Common patterns
-
-### Fill a form and submit
+## Step 3 — Fill a form
 
 ```python
+from gantrygraph import GantryEngine
+from gantrygraph.perception import WebPage
+from gantrygraph.actions import BrowserTools
+from langchain_anthropic import ChatAnthropic
+
 web = WebPage(url="https://myapp.example.com/login", headless=False)
 
 agent = GantryEngine(
@@ -65,31 +73,22 @@ agent = GantryEngine(
 agent.run("Log in with username 'admin' and password 'secret', then go to the dashboard.")
 ```
 
-### Scrape data without perception
+Set `headless=False` while developing so you can watch the agent interact with the page in real time.
 
-If the agent only needs to extract information (no clicking), you can skip
-the `perception` source and let it call `browser_get_text` explicitly.
-This is cheaper — no screenshots are sent to the LLM.
+---
+
+## Complete example
 
 ```python
+from gantrygraph import GantryEngine
+from gantrygraph.perception import WebPage
+from gantrygraph.actions import BrowserTools, FileSystemTools
+from langchain_anthropic import ChatAnthropic
+
+web = WebPage(url="https://github.com/trending/python?since=weekly", headless=True)
+
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[BrowserTools(headless=True)],   # no perception
-    max_steps=10,
-)
-
-result = agent.run(
-    "Go to https://pypi.org/project/gantrygraph/ and tell me the latest version."
-)
-```
-
-### Save results to a file
-
-```python
-from gantrygraph.actions import FileSystemTools
-
-agent = GantryEngine(
-    llm=...,
     perception=web,
     tools=[
         BrowserTools(web_page=web),
@@ -98,18 +97,41 @@ agent = GantryEngine(
     max_steps=30,
 )
 
-agent.run(
-    "Go to https://github.com/trending/python?since=weekly, "
-    "extract all repo names and star counts, and save them to trending.json."
+result = agent.run(
+    "Extract all repository names and star counts from the trending page "
+    "and save them as JSON to trending.json."
 )
+print(result)
 ```
 
-## Headless vs. visible browser
+---
 
-Set `headless=False` when developing — you can watch the agent work in real time.
-Set `headless=True` for production or CI runs.
+## Browser tools reference
 
-```python
-web = WebPage(url="...", headless=False)   # visible — for development
-web = WebPage(url="...", headless=True)    # invisible — for production
-```
+| Tool | What it does |
+|---|---|
+| `browser_navigate` | Open a URL in the browser |
+| `browser_click` | Click a CSS or XPath selector |
+| `browser_fill` | Type text into an input field |
+| `browser_get_text` | Return visible text from an element or the whole page |
+| `browser_get_url` | Return the current URL |
+
+## Variants
+
+- **Visible browser for development:** `WebPage(url="...", headless=False)`
+- **Firefox or WebKit:** `WebPage(url="...", browser_type="firefox")`
+- **Accessibility tree only (no screenshot):** `WebPage(url="...", include_screenshot=False)`
+- **Screenshot only (no accessibility tree):** `WebPage(url="...", include_accessibility=False)`
+- **Preset shortcut:** `from gantrygraph.presets import browser_agent; agent = browser_agent(llm, start_url="https://example.com")`
+
+## Troubleshooting
+
+**`ImportError: BrowserTools requires the [browser] extra`** — run `pip install 'gantrygraph[browser]' && playwright install chromium`.
+
+**`TimeoutError` on page load** — the default `wait_until="domcontentloaded"` can be slow on heavy pages; reduce `max_steps` and add a `BudgetPolicy(max_wall_seconds=60)`.
+
+**Agent clicks wrong element** — enable `include_accessibility=True` (default) so the LLM can use semantic selectors instead of coordinates.
+
+---
+
+**Next:** [Connect external services with MCP](mcp.md) · [Read and write files](filesystem.md) · [Run agents in parallel](swarm.md)

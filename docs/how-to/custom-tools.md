@@ -1,17 +1,17 @@
-# Build your own tool
+# Build Custom Tools
 
-A tool is any Python function the agent can call. There are three ways to
-create one, ordered by complexity.
+> Turn any Python function or class into a tool the agent can call.
 
-## The fast way — `@gantry_tool`
-
-Decorate any function and it becomes an LLM-callable tool in one step.
-The docstring is what the LLM reads to decide when to use the tool —
-write it clearly.
+## Step 1 — Simple decorator
 
 ```python
 from gantrygraph import GantryEngine, gantry_tool
 from langchain_anthropic import ChatAnthropic
+
+@gantry_tool
+def get_stock_price(ticker: str) -> str:
+    """Return the current stock price for a ticker symbol like AAPL or MSFT."""
+    return market_api.price(ticker)
 
 @gantry_tool
 async def send_email(to: str, subject: str, body: str) -> str:
@@ -19,30 +19,21 @@ async def send_email(to: str, subject: str, body: str) -> str:
     await email_client.send(to, subject, body)
     return "sent"
 
-@gantry_tool
-def get_stock_price(ticker: str) -> str:
-    """Return the current stock price for a ticker symbol like AAPL."""
-    return market_api.price(ticker)
-
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    tools=[send_email, get_stock_price],
+    tools=[get_stock_price, send_email],
     max_steps=10,
 )
 ```
 
-Type annotations are required — they define the JSON schema the LLM uses
-to construct the call. Both `def` and `async def` are supported.
+Type annotations on every parameter are required — they define the JSON schema the LLM uses to construct the call. The docstring is the tool description: write it as a single imperative sentence describing what the tool does and what it returns.
 
-## When tools share state — `BaseAction`
-
-If several tools share a connection (database, API client, browser session),
-group them in a `BaseAction` subclass. `GantryEngine` calls `close()`
-automatically when the run finishes.
+## Step 2 — Stateful BaseAction
 
 ```python
 from langchain_core.tools import StructuredTool
-from gantrygraph import BaseAction
+from gantrygraph import GantryEngine, BaseAction
+from langchain_anthropic import ChatAnthropic
 
 class SlackTools(BaseAction):
     def __init__(self, token: str) -> None:
@@ -51,23 +42,23 @@ class SlackTools(BaseAction):
     def get_tools(self):
         client = self._client
 
-        async def _post(channel: str, message: str) -> str:
-            """Post a message to a Slack channel."""
+        async def post_message(channel: str, message: str) -> str:
+            """Post a message to a Slack channel. Returns 'posted' on success."""
             await client.post(channel, message)
             return "posted"
 
-        async def _list_channels(team: str) -> str:
-            """List all channels in a workspace."""
-            return str(await client.list_channels(team))
+        async def list_channels(workspace: str) -> str:
+            """List all channels in a Slack workspace."""
+            return str(await client.list_channels(workspace))
 
         return [
             StructuredTool.from_function(
-                coroutine=_post,
+                coroutine=post_message,
                 name="slack_post",
                 description="Post a message to a Slack channel.",
             ),
             StructuredTool.from_function(
-                coroutine=_list_channels,
+                coroutine=list_channels,
                 name="slack_list_channels",
                 description="List all channels in a Slack workspace.",
             ),
@@ -83,42 +74,84 @@ agent = GantryEngine(
 )
 ```
 
-## Connect a third-party service — `MCPClient`
+Use `BaseAction` when multiple tools share state (an HTTP session, a DB connection, a browser). `GantryEngine` calls `close()` automatically at the end of every run.
 
-If the service already has an [MCP server](https://modelcontextprotocol.io)
-(GitHub, Notion, Postgres, Slack, and hundreds more), you don't need to write
-any tool code at all. Point `MCPClient` at the server and all its tools are
-discovered automatically:
+---
 
-```python
-from gantrygraph.mcp import MCPClient
-
-tools = MCPClient("npx -y @modelcontextprotocol/server-github")
-```
-
-See [Connect external services](mcp.md) for the full guide.
-
-## Tips for writing good tools
-
-**Short, specific docstrings** — the LLM calls what the docstring says. Vague
-descriptions lead to wrong calls.
+## Complete example
 
 ```python
-# Too vague
-async def process(data: str) -> str:
-    """Process the data."""
+import httpx
+from langchain_core.tools import StructuredTool
+from gantrygraph import GantryEngine, BaseAction, gantry_tool
+from langchain_anthropic import ChatAnthropic
 
-# Clear
-async def summarise_csv(csv_text: str) -> str:
-    """Summarise a CSV string into a bullet-point list of key statistics."""
+# Stateless tool via decorator
+@gantry_tool(name="calculate", description="Evaluate a Python math expression and return the result.")
+def calculate(expression: str) -> str:
+    try:
+        return str(eval(expression, {"__builtins__": {}}, {}))
+    except Exception as exc:
+        return f"Error: {exc}"
+
+# Stateful tools sharing one HTTP client
+class WeatherTools(BaseAction):
+    def __init__(self, api_key: str) -> None:
+        self._client = httpx.AsyncClient(
+            base_url="https://api.openweathermap.org/data/2.5",
+            params={"appid": api_key, "units": "metric"},
+        )
+
+    def get_tools(self):
+        client = self._client
+
+        async def current_weather(city: str) -> str:
+            """Return the current temperature and conditions for a city."""
+            r = await client.get("/weather", params={"q": city})
+            d = r.json()
+            return f"{d['main']['temp']}°C, {d['weather'][0]['description']}"
+
+        async def forecast(city: str, days: int = 3) -> str:
+            """Return a multi-day weather forecast for a city."""
+            r = await client.get("/forecast", params={"q": city, "cnt": days * 8})
+            return str(r.json()["list"][:days])
+
+        return [
+            StructuredTool.from_function(coroutine=current_weather, name="weather_current",
+                                         description="Return current weather for a city."),
+            StructuredTool.from_function(coroutine=forecast, name="weather_forecast",
+                                         description="Return a multi-day forecast for a city."),
+        ]
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[calculate, WeatherTools(api_key="your-key")],
+    max_steps=10,
+)
+
+result = agent.run("What is the average of the current temperatures in Paris and Tokyo?")
+print(result)
 ```
 
-**Return human-readable strings** — the LLM reads the return value to decide
-the next step. Return short, clear descriptions of what happened.
+---
 
-**Fail loudly** — raise exceptions for real errors rather than returning
-`"error"` strings. `GantryEngine` converts exceptions into `ToolMessage(status="error")`
-automatically so the LLM can try a different approach.
+## Variants
 
-**One responsibility per tool** — narrow tools are easier for the LLM to use
-correctly than multi-purpose tools with many optional parameters.
+- **Override name and description:** `@gantry_tool(name="db_search", description="Full-text search over orders.")`
+- **Async decorator:** `@gantry_tool` works on `async def` functions without any change
+- **Connect a third-party MCP server instead:** `MCPClient("npx -y @modelcontextprotocol/server-github")` — see [Connect external services with MCP](mcp.md)
+
+## Troubleshooting
+
+**`ValueError: @gantry_tool requires either a docstring or description=`** — add a docstring to the function or pass `description=` to the decorator.
+
+**LLM calls the tool with wrong argument types** — add explicit type annotations (`str`, `int`, `float`, `bool`). Without annotations, the JSON schema is incomplete and the LLM may guess wrong types.
+
+**Tool raises an exception** — `GantryEngine` catches tool exceptions and converts them to `ToolMessage(status="error")` so the LLM can try a different approach. Raise `ValueError` or `RuntimeError` for user-facing errors rather than returning error strings.
+
+---
+
+**Next:** [Connect external services with MCP](mcp.md) · [Read and write files](filesystem.md) · [Add memory to your agent](memory.md)

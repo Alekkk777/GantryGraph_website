@@ -1,24 +1,17 @@
-# Remember things between steps
+# Add Memory to Your Agent
 
-By default every agent run starts fresh — it sees only its task description and
-tool results from the current session. Add a memory store when the agent needs to
-recall facts from previous steps or previous runs.
+> Let the agent recall facts from earlier steps or previous runs using a pluggable memory store.
 
-## In-memory (same session, no setup)
-
-`InMemoryStore` is zero-dependency and instant to set up. It resets when your
-process exits, so use it when you only need recall within a single run.
+## Step 1 — In-memory store
 
 ```python
 from gantrygraph import GantryEngine
 from gantrygraph.memory import InMemoryStore
 from langchain_anthropic import ChatAnthropic
 
-memory = InMemoryStore()
-
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    memory=memory,
+    memory=InMemoryStore(),
     max_steps=30,
 )
 
@@ -26,17 +19,14 @@ result = agent.run(
     "Research three open-source Python agent frameworks, "
     "store a summary of each, then compare them."
 )
+print(result)
 ```
 
-The agent can call `memory_add` to store a fact and `memory_search` to retrieve
-relevant facts by semantic similarity at any later step.
+`InMemoryStore` uses trigram Jaccard similarity for retrieval — zero dependencies, instant setup. All entries are held in RAM and lost when the process exits. `GantryEngine` automatically stores the task result in memory at the end of each run and recalls relevant past results at the start of the next.
 
-## Persistent (survives restarts)
+## Step 2 — Persistent store
 
-`ChromaMemory` stores embeddings on disk via ChromaDB.
-Use it when you want the agent to remember things across multiple runs.
-
-```python
+```bash
 pip install 'gantrygraph[memory]'
 ```
 
@@ -45,59 +35,102 @@ from gantrygraph import GantryEngine
 from gantrygraph.memory import ChromaMemory
 from langchain_anthropic import ChatAnthropic
 
-memory = ChromaMemory(
-    collection_name="my_agent",
-    persist_directory="/var/lib/agent/memory",
-)
-
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
-    memory=memory,
+    memory=ChromaMemory(
+        collection_name="my_agent",
+        persist_directory="/var/lib/agent/memory",
+    ),
     max_steps=30,
 )
+
+result = agent.run("Summarise this week's pull requests.")
+print(result)
 ```
 
-Every time the agent stores a fact it is written to disk. On the next run
-the agent can search for and retrieve those facts by semantic similarity.
+`ChromaMemory` persists embeddings to disk via ChromaDB and uses sentence-transformer embeddings for semantic search. The next run automatically recalls the most relevant past entries.
 
-## How the agent uses memory
-
-When you attach a memory store, `GantryEngine` automatically adds two tools
-to the agent's tool list:
-
-| Tool name       | What the agent does with it                              |
-|-----------------|----------------------------------------------------------|
-| `memory_add`    | Store a text snippet with optional metadata              |
-| `memory_search` | Retrieve the `k` most semantically similar past entries  |
-
-The agent decides when to use them based on the task — you do not need to
-instruct it explicitly.
-
-## Search results
-
-`memory_search` returns results sorted by similarity score. Each result has
-the stored text and any metadata you attached:
-
-```python
-results = await memory.search("authentication errors", k=3)
-for r in results:
-    print(r.score, r.text, r.metadata)
-```
-
-## Build a custom backend
-
-Subclass `BaseMemory` and implement `add`, `search`, and `close`:
+## Step 3 — Custom backend
 
 ```python
 from gantrygraph.memory.base import BaseMemory, MemoryResult
 
 class RedisMemory(BaseMemory):
-    async def add(self, text: str, metadata=None) -> None:
-        ...
+    def __init__(self, redis_url: str) -> None:
+        import redis.asyncio as aioredis
+        self._redis = aioredis.from_url(redis_url)
+
+    async def add(self, text: str, metadata: dict | None = None) -> None:
+        import json, uuid
+        key = f"memory:{uuid.uuid4()}"
+        await self._redis.set(key, json.dumps({"text": text, "meta": metadata or {}}))
 
     async def search(self, query: str, k: int = 5) -> list[MemoryResult]:
-        ...
+        # implement semantic or keyword search here
+        return []
 
     async def close(self) -> None:
-        ...
+        await self._redis.aclose()
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    memory=RedisMemory("redis://localhost:6379"),
+    max_steps=20,
+)
 ```
+
+Subclass `BaseMemory` and implement `add`, `search`, and optionally `close`. `GantryEngine` calls all three automatically.
+
+---
+
+## Complete example
+
+```python
+import asyncio
+from gantrygraph import GantryEngine
+from gantrygraph.memory import ChromaMemory
+from gantrygraph.actions import FileSystemTools, ShellTools
+from langchain_anthropic import ChatAnthropic
+
+memory = ChromaMemory(
+    collection_name="code_agent",
+    persist_directory="./agent_memory",
+)
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[
+        FileSystemTools(workspace="/my/project"),
+        ShellTools(workspace="/my/project", allowed_commands=["pytest", "git"]),
+    ],
+    memory=memory,
+    max_steps=25,
+)
+
+# First run — agent stores what it learns
+asyncio.run(agent.arun("Explore the project structure and summarise the architecture."))
+
+# Second run — agent recalls the architecture summary automatically
+asyncio.run(agent.arun("Add a new endpoint following the existing patterns."))
+```
+
+---
+
+## Variants
+
+- **In-memory for testing:** `memory=InMemoryStore()` — no install, resets on exit
+- **Ephemeral ChromaDB (no disk):** `ChromaMemory(persist_directory=None)`
+- **Named collection per project:** `ChromaMemory(collection_name="project-x")`
+- **Search memory manually:** `results = await memory.search("authentication errors", k=3)`
+
+## Troubleshooting
+
+**`ImportError: ChromaMemory requires chromadb`** — run `pip install 'gantrygraph[memory]'`.
+
+**Memory results are irrelevant** — `InMemoryStore` uses trigram overlap, not semantic similarity. Switch to `ChromaMemory` for better retrieval on longer or more diverse text.
+
+**`ChromaMemory` is slow on first run** — the first run downloads the sentence-transformer model (~90 MB). Subsequent runs use the cached model.
+
+---
+
+**Next:** [Build custom tools](custom-tools.md) · [Monitor agent execution](observability.md) · [Run agents in parallel](swarm.md)
