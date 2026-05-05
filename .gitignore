@@ -1,6 +1,5 @@
-site/
-__pycache__/
-.vercel/
-.DS_Store
-*.pyc
 .vercel
+.next
+node_modules
+out
+*.local

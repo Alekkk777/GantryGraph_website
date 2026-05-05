@@ -38,11 +38,10 @@ result = agent.run("Your task here")
 | `budget` | `BudgetPolicy` | `None` | Step and wall-clock limits |
 | `memory` | `BaseMemory` | `None` | Long-term memory backend |
 | `on_event` | `callable` | `None` | `(GantryEvent) → None` — called after each node transition |
-| `workspace_policy` | `WorkspacePolicy` | `None` | Auto-wires `FileSystemTools` + `ShellTool` locked to a directory |
+| `workspace_policy` | `WorkspacePolicy` | `None` | Auto-wires `FileSystemTools` + `ShellTools` locked to one or more directories |
+| `telemetry` | `str` | `None` | `"stdout"` pretty-prints events; `"langsmith"` enables LangSmith tracing; `"silent"` suppresses all logs |
 | `checkpointer` | LangGraph checkpointer | `None` | State persistence for suspension/resume |
 | `enable_suspension` | `bool` | `False` | Enable `interrupt()`-based HITL (requires a checkpointer) |
-| `secrets` | `GantrySecrets` | `None` | Blind credential injection — LLM sees aliases, real values injected at execution time |
-| `telemetry` | `"silent"` / `"stdout"` / `"langsmith"` | `None` | Built-in telemetry shortcut |
 
 **Methods**
 
@@ -129,37 +128,34 @@ from gantrygraph import gantry_tool
 async def fetch_price(ticker: str) -> str:
     """Return the latest price for a stock ticker."""
     ...
-
-# Mark a tool as destructive — GantryEngine auto-adds it to GuardrailPolicy.requires_approval
-@gantry_tool(destructive=True)
-def drop_table(table: str) -> str:
-    """Drop a database table permanently."""
-    ...
 ```
 
-The docstring becomes the tool description — make it specific.
-
-| Keyword arg | Default | Description |
-|---|---|---|
-| `name` | function `__name__` | Override the tool name visible to the LLM |
-| `description` | docstring | Override the tool description |
-| `destructive` | `False` | Tag as destructive — auto-requires human approval without listing in `GuardrailPolicy` |
+The docstring becomes the tool description — make it specific. Accepts optional `name=` and `description=` overrides.
 
 ---
 
 ### `FileSystemTools`
 
-Sandbox-safe file operations, locked to a workspace directory.
+Sandbox-safe file operations, locked to one or more directories.
 
 ```python
 from gantrygraph.actions import FileSystemTools
 
+# Single directory
 tools = FileSystemTools(workspace="/tmp/sandbox")
+
+# Multiple directories — read from one, write to another
+tools = FileSystemTools(allowed_paths=["/data/input", "/data/output"])
+
+# No restriction (trusted environments only)
+tools = FileSystemTools(unrestricted=True)
 ```
 
 | Parameter | Default | Description |
 |---|---|---|
-| `workspace` | required | All paths are resolved relative to this directory; traversal attempts raise `PermissionError` |
+| `workspace` | `None` | Single allowed directory (original API — still supported) |
+| `allowed_paths` | `None` | List of allowed directories; relative paths resolve against the first entry |
+| `unrestricted` | `False` | Skip all path validation — use only in trusted environments |
 
 **Exposed tools:** `file_read`, `file_write`, `file_list`, `file_delete`
 
@@ -171,22 +167,19 @@ Run shell commands via `asyncio` subprocess.
 
 ```python
 from gantrygraph.actions import ShellTools
-from gantrygraph.security import ShellDenylist
 
 tools = ShellTools(
     workspace="/tmp/sandbox",
     allowed_commands=["python", "pytest", "git"],
     timeout=30.0,
-    denylist=ShellDenylist.strict(),
 )
 ```
 
 | Parameter | Default | Description |
 |---|---|---|
-| `workspace` | `None` | Working directory for every command |
+| `workspace` | required | Working directory for every command |
 | `allowed_commands` | `None` | Executable allowlist — `None` permits everything |
 | `timeout` | `30.0` | Per-command wall-clock limit in seconds |
-| `denylist` | `ShellDenylist.default()` | Regex-based command firewall — see [`ShellDenylist`](#shelldenylist) |
 
 **Exposed tool:** `shell_run`
 
@@ -303,6 +296,7 @@ web = WebPage(url="https://example.com", headless=True)
 | `stealth` | `True` | Anti-bot-detection patches |
 | `include_screenshot` | `True` | Include PNG screenshot in each observation |
 | `include_accessibility` | `True` | Include accessibility tree in each observation |
+| `vision_mode` | `"high"` | `"high"` = full viewport; `"low"` = downscale to 1280×720 before encoding, cutting vision token cost |
 
 `page` property gives direct access to the Playwright `Page` object for advanced use.
 
@@ -320,7 +314,10 @@ screen = DesktopScreen(max_resolution=(1280, 720))
 
 | Parameter | Default | Description |
 |---|---|---|
-| `max_resolution` | `(1280, 720)` | Cap resolution before encoding — reduces token cost on high-DPI displays |
+| `max_resolution` | `(1920, 1080)` | Cap resolution before encoding |
+| `monitor` | `1` | Monitor index (1 = primary) |
+| `png_quality` | `85` | PNG compression level |
+| `vision_mode` | `"high"` | `"high"` = use *max_resolution* as-is; `"low"` = cap at 1280×720, reducing vision token cost |
 
 ---
 
@@ -469,129 +466,59 @@ guardrail = GuardrailPolicy(requires_approval={"shell_run", "file_delete"})
 agent = GantryEngine(llm=..., guardrail=guardrail, approval_callback=my_callback)
 ```
 
-Tools tagged with `@gantry_tool(destructive=True)` are automatically added to `requires_approval` — no manual listing needed.
-
----
-
-### `ShellDenylist`
-
-Regex-based firewall applied to every shell command before the subprocess is created. The OS never sees blocked commands.
-
-```python
-from gantrygraph.security import ShellDenylist
-from gantrygraph.actions import ShellTools
-
-# Three built-in profiles
-ShellTools(denylist=ShellDenylist.default())     # default — blocks catastrophic commands
-ShellTools(denylist=ShellDenylist.strict())      # also blocks mkfs, chmod 777, env dumps
-ShellTools(denylist=ShellDenylist.permissive())  # no restrictions
-
-# Custom patterns
-ShellTools(
-    denylist=ShellDenylist(
-        patterns=[*ShellDenylist.default().patterns, r"my-forbidden-cmd"],
-        on_match="warn",   # log instead of block
-    )
-)
-```
-
-| Parameter | Default | Description |
-|---|---|---|
-| `patterns` | `[]` | List of regex strings. First match wins |
-| `on_match` | `"block"` | `"block"` returns an error to the LLM; `"warn"` logs and continues |
-
-**Default profile blocks:** `rm -rf /`, `dd if=/dev/zero of=/dev/`, SSH key reads, `cat /etc/shadow`, fork bombs, `curl | bash`, `wget | python`.
-
-**Strict profile additionally blocks:** `mkfs`, `fdisk`, `parted`, writes to block devices, `chmod -R 777`, bare `env` / `printenv`.
-
----
-
-### `GantrySecrets`
-
-Blind credential injection — the LLM sees aliases (e.g. `DB_PASS`), real values are substituted at execution time and never appear in the message history.
-
-```python
-import os
-from gantrygraph.security import GantrySecrets
-
-secrets = GantrySecrets({
-    "DB_PASS": os.environ["DB_PASSWORD"],
-    "API_KEY": os.environ["OPENAI_API_KEY"],
-})
-
-agent = GantryEngine(llm=..., tools=[...], secrets=secrets)
-# System prompt gains: "Secret aliases available: DB_PASS, API_KEY.
-#   Pass them by name — values are injected securely at execution time."
-```
-
-Aliases work both as exact values and embedded in strings:
-
-```python
-# LLM calls:  {"password": "DB_PASS"}             → tool gets: {"password": "s3cr3t"}
-# LLM calls:  {"command": "mysql -u root -pDB_PASS"} → tool gets: {"command": "mysql -u root -ps3cr3t"}
-```
-
-| Method | Description |
-|---|---|
-| `aliases → list[str]` | Alias names (no values) — injected into the system prompt |
-| `resolve(args) → dict` | Substitute all aliases in a tool-call args dict |
-| `system_prompt_hint() → str` | Short system message listing available aliases |
-
 ---
 
 ### `BudgetPolicy`
 
-Hard limits on step count, token usage, and wall-clock time.
+Hard limits on step count, wall-clock time, and token usage.
 
 ```python
 from gantrygraph.security import BudgetPolicy
 
-budget = BudgetPolicy(
-    max_steps=30,
-    max_tokens=10_000,       # raises BudgetExceededError when exceeded
-    max_wall_seconds=120.0,  # raises TimeoutError when exceeded
-    on_limit="stop",         # "stop" (default) or "warn"
-)
+# Hard stop at 10 000 tokens
+budget = BudgetPolicy(max_steps=20, max_tokens=10_000)
 agent = GantryEngine(llm=..., budget=budget)
+
+# Warn but continue (useful for monitoring without blocking)
+budget = BudgetPolicy(max_tokens=50_000, on_limit="warn")
 ```
 
 | Parameter | Default | Description |
 |---|---|---|
 | `max_steps` | `50` | Caps `GantryEngine.max_steps` |
-| `max_tokens` | `None` | Cumulative token cap across the full run |
-| `max_wall_seconds` | `None` | Wall-clock timeout per run — raises `TimeoutError` |
-| `on_limit` | `"stop"` | `"stop"` raises `BudgetExceededError`; `"warn"` logs and continues |
+| `max_wall_seconds` | `None` | Wall-clock timeout — raises `TimeoutError` if exceeded |
+| `max_tokens` | `None` | Cumulative token cap tracked via `AIMessage.usage_metadata` |
+| `on_limit` | `"stop"` | `"stop"` raises `BudgetExceededError` when `max_tokens` is hit; `"warn"` logs and continues |
 
----
-
-### `BudgetExceededError`
-
-Raised by `arun()` when `BudgetPolicy.max_tokens` is exceeded and `on_limit="stop"`.
+**`BudgetExceededError`** — raised by `arun()` when `max_tokens` is exceeded and `on_limit="stop"`.
 
 ---
 
 ### `WorkspacePolicy`
 
-Restrict the agent to one or more directories. Automatically wires `FileSystemTools` + `ShellTools` locked to the allowed paths.
+Restrict the agent to one or more directories. Automatically wires `FileSystemTools` + `ShellTools`.
 
 ```python
 from gantrygraph.security import WorkspacePolicy
 
 # Single directory
-agent = GantryEngine(llm=..., workspace_policy=WorkspacePolicy.restricted("/app"))
+WorkspacePolicy.restricted("/tmp/sandbox")
 
 # Multiple directories
-agent = GantryEngine(llm=..., workspace_policy=WorkspacePolicy.multi_path(["/tmp/in", "/tmp/out"]))
+WorkspacePolicy.multi_path(["/data/input", "/data/output"])
 
 # No restriction (trusted environments only)
-agent = GantryEngine(llm=..., workspace_policy=WorkspacePolicy.full_access())
+WorkspacePolicy.full_access()
+
+# Backward-compatible
+WorkspacePolicy(workspace_path="/tmp/sandbox")
 ```
 
-| Class method | Description |
-|---|---|
-| `WorkspacePolicy.restricted(path)` | Lock to a single directory |
-| `WorkspacePolicy.multi_path(paths)` | Allow multiple directories |
-| `WorkspacePolicy.full_access()` | No path restrictions |
+| Field | Default | Description |
+|---|---|---|
+| `allowed_paths` | `[]` | List of allowed directories |
+| `unrestricted` | `False` | Skip all path validation |
+| `workspace_path` | `None` | Deprecated — use `restricted()` or `allowed_paths` |
 
 ---
 
@@ -686,8 +613,6 @@ LangGraph `TypedDict` — the full state dict passed between nodes in the agent 
 | `last_error` | `str \| None` | Most recent tool error message |
 | `last_observation` | `Any` | Raw `PerceptionResult.model_dump()` from the last observe step |
 | `consecutive_errors` | `int` | Back-to-back error count — triggers early termination when it reaches `max_consecutive_errors` |
-| `total_tokens` | `int` | Cumulative tokens used across all LLM calls — tracked against `BudgetPolicy.max_tokens` |
-| `last_screenshot_hash` | `str \| None` | SHA-256 of the last screenshot — unchanged screens are skipped to save vision tokens |
 
 ---
 

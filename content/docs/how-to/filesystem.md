@@ -1,6 +1,6 @@
 # Read and Write Files
 
-> Give your agent sandboxed access to a directory so it can read, write, list, and delete files.
+> Give your agent sandboxed access to one or more directories so it can read, write, list, and delete files.
 
 ## Step 1 — Read and write files
 
@@ -19,9 +19,21 @@ result = agent.run("Find all TODO comments in Python files and create a TODO.md 
 print(result)
 ```
 
-`FileSystemTools` gives the agent four tools: `file_read`, `file_write`, `file_list`, and `file_delete`. Every path is validated against `workspace` before I/O — path-traversal attempts like `../../etc/passwd` raise `PermissionError` and are never executed.
+`FileSystemTools` gives the agent four tools: `file_read`, `file_write`, `file_list`, and `file_delete`. Every path is validated against the allowed roots — path-traversal attempts like `../../etc/passwd` raise `PermissionError` and are never executed.
 
-## Step 2 — Add shell commands
+## Step 2 — Multiple allowed directories
+
+When your task reads from one location and writes to another, pass a list:
+
+```python
+from gantrygraph.actions import FileSystemTools
+
+tools = FileSystemTools(allowed_paths=["/data/input", "/data/output"])
+```
+
+The agent can use any absolute path inside either directory. Relative paths resolve against the first entry in the list.
+
+## Step 3 — Add shell commands
 
 ```python
 from gantrygraph import GantryEngine
@@ -50,18 +62,17 @@ print(result)
 
 `allowed_commands` is an allowlist — set it to the minimum executables your task needs. `timeout` is a per-command wall-clock limit in seconds.
 
-**Security note:** `ShellTools` ships with `ShellDenylist.default()` active. It blocks catastrophic commands — `rm -rf /`, `dd` disk wipes, SSH key reads, `/etc/shadow` access, fork bombs, and `curl | bash` pipelines — before the OS sees them. To tighten the denylist further, pass `denylist=ShellDenylist.strict()`, which additionally blocks `mkfs`, `fdisk`, `chmod 777`, and bare `env`/`printenv`. To disable it entirely (not recommended), pass `denylist=ShellDenylist.permissive()`.
+**Security:** `ShellTools` ships with `ShellDenylist.default()` active. It blocks catastrophic commands — `rm -rf /`, fork bombs, `curl | bash`, and SSH key reads — before the OS sees them. To tighten controls, pass `denylist=ShellDenylist.strict()`. To disable (trusted environments only), pass `denylist=ShellDenylist.permissive()`.
 
 ```python
 from gantrygraph.security import ShellDenylist
 
-ShellTools(workspace="/app", denylist=ShellDenylist.strict())      # tighter
-ShellTools(workspace="/app", denylist=ShellDenylist.permissive())  # no patterns
+ShellTools(workspace="/app", denylist=ShellDenylist.strict())
 ```
 
-## Step 3 — Workspace policy shorthand
+## Step 4 — Workspace policy shorthand
 
-`WorkspacePolicy` automatically wires both `FileSystemTools` and `ShellTools` locked to a directory. Use the factory methods rather than constructing it directly:
+`WorkspacePolicy` automatically adds both `FileSystemTools` and `ShellTools`. Use the factory methods to express intent clearly:
 
 ```python
 from gantrygraph import GantryEngine
@@ -74,24 +85,20 @@ agent = GantryEngine(
     workspace_policy=WorkspacePolicy.restricted("/app"),
     max_steps=20,
 )
-```
 
-`WorkspacePolicy.restricted("/app")` is equivalent to manually passing `FileSystemTools(workspace="/app")` and `ShellTools(workspace="/app")` in `tools=`.
-
-To allow access to multiple directories — for example a read-only input directory and a writable output directory:
-
-```python
+# Multiple directories
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
     workspace_policy=WorkspacePolicy.multi_path(["/data/input", "/data/output"]),
     max_steps=20,
 )
-```
 
-To remove all path restrictions (use only in trusted environments):
-
-```python
-workspace_policy=WorkspacePolicy.full_access()
+# No path restriction — trusted environments only
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    workspace_policy=WorkspacePolicy.full_access(),
+    max_steps=20,
+)
 ```
 
 ---
@@ -146,18 +153,17 @@ print(result)
 
 ## Variants
 
-- **Read-only agent:** omit `file_write`, `file_delete`, and `ShellTools` — pass only `FileSystemTools` with its tools filtered, or use `@gantry_tool` to expose only `file_read` and `file_list`
+- **Read-only agent:** pass only `FileSystemTools` and omit `ShellTools`; use `@gantry_tool` to expose only `file_read` and `file_list`
+- **Separate input/output roots:** `FileSystemTools(allowed_paths=["/data/in", "/data/out"])`
+- **No restriction (dev mode):** `FileSystemTools(unrestricted=True)` or `WorkspacePolicy.full_access()`
 - **No shell allowlist (trust the agent):** `ShellTools(workspace="/app")` with no `allowed_commands`
-- **Longer shell timeout:** `ShellTools(workspace="/app", timeout=120.0)`
 - **Guard destructive ops:** add `GuardrailPolicy(requires_approval={"file_delete", "shell_run"})` — see [Require human approval](human-approval.md)
 
 ## Troubleshooting
 
-**`PermissionError: path escapes workspace`** — the agent tried a path like `../../etc`; this is working as intended. Widen `workspace` if legitimate paths are being blocked.
+**`PermissionError: path escapes workspace`** — the agent tried a path outside the allowed roots. Widen the list with `allowed_paths=` or use `WorkspacePolicy.full_access()` in dev.
 
 **`shell_run` returns `command not found`** — the executable is not in `allowed_commands`. Either add it or set `allowed_commands=None` to allow everything.
-
-**`ShellDenylist blocked command`** — the command matched a denylist pattern. If the command is genuinely safe for your context, switch to `ShellDenylist.permissive()` or provide a custom denylist with `ShellDenylist(patterns=[...])`.
 
 **Agent reads large files and runs out of tokens** — `file_read` returns the full file. Add a `system_prompt` instructing the agent to read only the relevant sections.
 

@@ -1,29 +1,36 @@
 # Monitor Agent Execution
 
-> Observe every step the agent takes — in-process callbacks, async streaming, and OpenTelemetry traces.
+> Observe every step the agent takes — built-in shortcuts, in-process callbacks, async streaming, and OpenTelemetry traces.
 
-## Step 1 — Print events to stdout (zero setup)
+## Step 1 — Built-in telemetry shortcuts
 
-Pass `telemetry="stdout"` to get colored event output without writing any callback code. This is the fastest way to see what the agent is doing during development.
+The fastest way to see what the agent is doing is the `telemetry=` shortcut on `GantryEngine`:
 
 ```python
 from gantrygraph import GantryEngine
 from langchain_anthropic import ChatAnthropic
 
+# Pretty-print every event to stdout
 agent = GantryEngine(
     llm=ChatAnthropic(model="claude-sonnet-4-6"),
     telemetry="stdout",
-    max_steps=30,
+    max_steps=20,
 )
-
-agent.run("Summarise the last 10 commits in this repo.")
+agent.run("List the 5 largest files in /tmp")
+# [gantry step=00] OBSERVE    {'width': 0, 'height': 0, 'screenshot_cached': False}
+# [gantry step=00] THINK      {'tool_calls': ['shell_run']}
+# ...
 ```
 
-`telemetry="stdout"` prints each event type, step number, and key data fields in color as the agent runs. To suppress all logging (useful in tests or production pipelines), pass `telemetry="silent"`. To enable LangSmith tracing, pass `telemetry="langsmith"` — this sets `LANGCHAIN_TRACING_V2=true` automatically.
+| Value | Effect |
+|---|---|
+| `"stdout"` | Pretty-prints each `GantryEvent` to stdout during the run |
+| `"langsmith"` | Sets `LANGCHAIN_TRACING_V2=true` — traces appear in your LangSmith dashboard |
+| `"silent"` | Suppresses all `gantrygraph.*` log output |
 
-## Step 2 — Event callback
+`telemetry=` and `on_event=` are composable — if you pass both, both fire on every event.
 
-For structured logging, dashboards, or custom sinks, pass an `on_event` callback. Both sync and async callbacks are supported.
+## Step 2 — Custom event callback
 
 ```python
 from gantrygraph import GantryEngine
@@ -41,7 +48,7 @@ agent = GantryEngine(
 agent.run("Summarise the last 10 commits in this repo.")
 ```
 
-`on_event` fires after every phase of the loop in order: `observe → think → act → review → done`. Use `async def log(event): ...` for non-blocking I/O inside the callback (database writes, HTTP requests, etc.).
+`on_event` fires after every phase of the loop in order: `observe → think → act → review → done`. Both sync and async callbacks are supported — use `async def log(event): ...` for non-blocking I/O.
 
 ## Step 3 — Stream events asynchronously
 
@@ -62,7 +69,7 @@ async def main():
 asyncio.run(main())
 ```
 
-`astream_events()` is an async generator — each event is yielded as it is emitted rather than waiting for the full run to finish. Use this to push live updates to a WebSocket or SSE stream.
+`astream_events()` is an async generator — yield each event as it is emitted rather than waiting for the full run to finish.
 
 ## Step 4 — OpenTelemetry traces
 
@@ -108,16 +115,14 @@ from langchain_anthropic import ChatAnthropic
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent")
 
-# Both in-process logging and OTel traces, combined
 exporter = OTelExporter(service_name="ci-agent", otlp_endpoint=None)  # stdout for dev
 
 def on_event(event):
     logger.info(json.dumps({
         "event": event.event_type,
         "step": event.step,
-        **event.data,
+        **{k: v for k, v in event.data.items() if k != "screenshot_b64"},
     }))
-    # Also feed the OTel exporter
     exporter.as_event_callback()(event)
 
 agent = GantryEngine(
@@ -143,15 +148,15 @@ exporter.force_flush()
 |---|---|---|
 | `event_type` | `str` | `observe`, `think`, `act`, `review`, `error`, `done` |
 | `step` | `int` | Current loop iteration (0-indexed) |
-| `data` | `dict` | Step-specific payload |
+| `data` | `dict` | Step-specific payload — `screenshot_cached` in observe events indicates diffing saved a round-trip |
 
 ## Variants
 
-- **LangSmith tracing:** `GantryEngine(llm=..., telemetry="langsmith")` — sets `LANGCHAIN_TRACING_V2=true` automatically
-- **Suppress all output:** `GantryEngine(llm=..., telemetry="silent")`
-- **Stdout spans (dev mode):** `OTelExporter(service_name="agent", otlp_endpoint=None)`
+- **Stdout (dev):** `telemetry="stdout"` — zero config, human-readable
+- **LangSmith:** `telemetry="langsmith"` — set `LANGSMITH_API_KEY` env var first
+- **Silent prod:** `telemetry="silent"` — suppresses all framework log output
+- **Stdout OTel spans:** `OTelExporter(service_name="agent", otlp_endpoint=None)`
 - **Grafana Tempo / Jaeger:** `OTelExporter(otlp_endpoint="http://localhost:4317")`
-- **Python `logging` module:** `on_event=lambda e: logger.info("%s step=%d", e.event_type, e.step)`
 - **Filter to act events only:** `on_event=lambda e: print(e) if e.event_type == "act" else None`
 
 ## Troubleshooting
