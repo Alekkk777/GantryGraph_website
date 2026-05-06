@@ -149,7 +149,7 @@ const STREAM_EVENTS: StreamEvent[] = [
   { t: 'action',  ts: '00:01.1', label: 'suspended', msg: 'Waiting for approval — thread_id: tk_0x4a91' },
   { t: 'thought', ts: '00:04.2', label: 'approved', msg: 'Human approved. Resuming execution.' },
   { t: 'tool',    ts: '00:04.5', label: 'tool_call', msg: 'deploy(env="staging")' },
-  { t: 'action',  ts: '00:05.1', label: 'budget', msg: 'tokens used: 4 231 / 10 000 · steps: 3 / 50' },
+  { t: 'action',  ts: '00:05.1', label: 'budget', msg: 'tokens used: 4 231 / 10 000 · steps: 3 / 5' },
   { t: 'thought', ts: '00:05.8', label: 'done', msg: 'Deploy complete. All checks passed.' },
 ];
 
@@ -203,9 +203,8 @@ export default function Hero() {
               <span>GantryGraph <em>v{version}</em> is now live on PyPI</span>
             </div>
             <h1 className="hero-title">
-              <span className="gradient-text">Secure, OS-level AI agents</span><br />
-              <span className="gradient-text-accent">built for</span>{' '}
-              <span className="gradient-text">Developers.</span>
+              <span className="gradient-text">OS-level AI agents</span><br />
+              <span className="gradient-text-accent">built for Developers.</span>
             </h1>
             <p className="hero-sub">
               GantryGraph transforms LangGraph into a secure, fully-controllable engine

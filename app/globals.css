@@ -798,6 +798,72 @@ h1.hero-title {
   color: var(--fg-dim);
 }
 
+/* ===== Hamburger button ===== */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+}
+.ham-bar {
+  display: block;
+  width: 100%;
+  height: 1.5px;
+  background: var(--fg-muted);
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+  transform-origin: center;
+}
+.ham-bar.open:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+.ham-bar.open:nth-child(2) { opacity: 0; }
+.ham-bar.open:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+/* ===== Mobile menu overlay ===== */
+.mobile-menu {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+}
+.mobile-nav {
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 60px;
+}
+.mobile-nav-link {
+  display: block;
+  padding: 14px 12px;
+  font-size: 16px;
+  color: var(--fg-muted);
+  border-radius: 8px;
+  border-left: 2px solid transparent;
+  transition: all 0.12s;
+}
+.mobile-nav-link:hover,
+.mobile-nav-link.active { color: var(--fg); background: var(--bg-elev-2); border-left-color: var(--accent); }
+.mobile-nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 /* ===== Toast for copy ===== */
 .toast {
   position: fixed;
@@ -1328,4 +1394,95 @@ pre.shiki-pre code span { font-family: inherit; }
   font-size: 14px;
   margin: 0;
   color: var(--fg-muted);
+}
+
+/* ========================================
+   Mobile responsive — ≤768px
+   ======================================== */
+
+@media (max-width: 768px) {
+  /* Show hamburger, hide desktop nav */
+  .hamburger { display: flex; }
+  .nav-desktop { display: none; }
+  .nav-cta { display: none; }
+
+  /* Header */
+  .header-inner { height: 56px; }
+
+  /* Container tighter on small screens */
+  .container { padding: 0 16px; }
+
+  /* Sections */
+  .section { padding: 64px 0; }
+  .section-tight { padding: 40px 0; }
+
+  /* Hero */
+  .hero { padding: 48px 0 40px; }
+  .hero-grid { gap: 32px; }
+  h1.hero-title { font-size: clamp(32px, 9vw, 48px); line-height: 1.05; }
+  .hero-sub { font-size: 16px; }
+  .hero-cta { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .copy-block { width: 100%; justify-content: space-between; }
+
+  /* Terminal — readable on narrow screens */
+  .term-body {
+    font-size: 11.5px;
+    padding: 14px 16px;
+    min-height: 240px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Stream panel */
+  .stream-body { min-height: 220px; font-size: 11.5px; }
+  .stream-event { grid-template-columns: 52px 1fr; gap: 8px; }
+
+  /* Bento */
+  .bento { grid-template-columns: 1fr; grid-template-rows: auto; gap: 12px; margin-top: 32px; }
+  .bento-card { min-height: 160px; }
+
+  /* Section titles */
+  .section-title { font-size: clamp(24px, 7vw, 36px); }
+  .section-sub { font-size: 15px; }
+
+  /* Compare table — scroll horizontally */
+  .compare-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+  .compare-table { min-width: 540px; }
+
+  /* Use cases */
+  .usecase-grid { grid-template-columns: 1fr; gap: 16px; margin-top: 24px; }
+  .usecase-tabs { flex-direction: row; overflow-x: auto; gap: 8px; padding-bottom: 4px; }
+  .usecase-tab { min-width: 140px; padding: 12px 14px; }
+  .usecase-panel { min-height: 300px; }
+
+  /* FAQ */
+  .faq-q { font-size: 15px; padding: 18px 0; }
+
+  /* Final CTA */
+  .final-cta { padding: 80px 16px; }
+  .giant-install { font-size: 14px; padding: 14px 16px; gap: 12px; width: 100%; justify-content: space-between; }
+
+  /* Footer */
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
+  .footer-bottom { flex-direction: column; text-align: center; gap: 8px; }
+
+  /* Docs */
+  .docs-layout { padding: 20px 16px 64px; }
+  .docs-main h1, .docs-prose h1, .docs-content h1 { font-size: 28px; }
+  .docs-main h2, .docs-prose h2, .docs-content h2 { font-size: 20px; margin: 40px 0 10px; }
+  .page-nav { grid-template-columns: 1fr; }
+  .page-nav .next { text-align: left; }
+
+  /* Pill */
+  .pill { font-size: 11px; }
+}
+
+/* ≤480px — phones */
+@media (max-width: 480px) {
+  h1.hero-title { font-size: clamp(28px, 10vw, 40px); }
+  .term-body { font-size: 11px; padding: 12px 14px; }
+  .stream-event .msg { font-size: 11px; }
+  .footer-grid { grid-template-columns: 1fr; }
+  .usecase-tabs { flex-direction: column; }
+  .usecase-tab { min-width: unset; }
 }

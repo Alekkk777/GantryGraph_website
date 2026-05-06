@@ -18,15 +18,10 @@ const StarIcon = () => (
 
 const LogoMark = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    {/* outer left bracket */}
     <path d="M5 4 L3 4 L3 20 L5 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    {/* outer right bracket */}
     <path d="M19 4 L21 4 L21 20 L19 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    {/* inner left bracket */}
     <path d="M8 7 L6.5 7 L6.5 17 L8 17" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    {/* inner right bracket */}
     <path d="M16 7 L17.5 7 L17.5 17 L16 17" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    {/* asterisk center */}
     <line x1="12" y1="9.5" x2="12" y2="14.5" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
     <line x1="9.6" y1="10.8" x2="14.4" y2="13.2" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
     <line x1="14.4" y1="10.8" x2="9.6" y2="13.2" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
@@ -38,6 +33,14 @@ function formatStars(n: number): string {
   return String(n);
 }
 
+const NAV_LINKS = [
+  { href: '/', label: 'Home' },
+  { href: '/docs', label: 'Docs' },
+  { href: '/quickstart', label: 'Quickstart' },
+  { href: '/api-reference', label: 'API' },
+  { href: '/community', label: 'Community' },
+];
+
 interface HeaderProps {
   variant?: 'landing' | 'docs';
 }
@@ -45,6 +48,7 @@ interface HeaderProps {
 export default function Header({ variant = 'landing' }: HeaderProps) {
   const pathname = usePathname();
   const [stars, setStars] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     fetch('https://api.github.com/repos/GantryGraph/GantryGraph')
@@ -53,48 +57,106 @@ export default function Header({ variant = 'landing' }: HeaderProps) {
       .catch(() => {});
   }, []);
 
+  // Close menu on route change
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+
+  // Lock body scroll when menu is open
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [menuOpen]);
+
+  const isActive = (href: string) =>
+    href === '/' ? pathname === '/' : pathname?.startsWith(href);
+
   return (
-    <header className="header">
-      <div className="container header-inner">
-        <Link href="/" className="logo">
-          <span className="logo-mark" style={{ color: 'var(--accent)' }}>
-            <LogoMark />
-          </span>
-          <span>GantryGraph</span>
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-dim)',
-            border: '1px solid var(--border)', padding: '2px 6px', borderRadius: 4,
-            marginLeft: 4,
-          }}>
-            {variant === 'docs' ? 'docs · ' : ''}v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.3.0'}
-          </span>
-        </Link>
-        <nav className="nav">
-          <Link href="/" style={pathname === '/' ? { color: 'var(--fg)' } : {}}>Home</Link>
-          <Link href="/docs" style={pathname?.startsWith('/docs') ? { color: 'var(--fg)' } : {}}>Docs</Link>
-          <Link href="/quickstart" style={pathname === '/quickstart' ? { color: 'var(--fg)' } : {}}>Quickstart</Link>
-          <Link href="/api-reference" style={pathname === '/api-reference' ? { color: 'var(--fg)' } : {}}>API Reference</Link>
-          <Link href="/community" style={pathname === '/community' ? { color: 'var(--fg)' } : {}}>Community</Link>
-        </nav>
-        <div className="nav-right">
-          <a
-            className="icon-btn"
-            href="https://github.com/GantryGraph/GantryGraph"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub"
-          >
-            <GitHubIcon />
-            <StarIcon />
-            <span style={{ minWidth: 24, display: 'inline-block' }}>
-              {stars ?? '—'}
+    <>
+      <header className="header">
+        <div className="container header-inner">
+          <Link href="/" className="logo">
+            <span className="logo-mark" style={{ color: 'var(--accent)' }}>
+              <LogoMark />
             </span>
-          </a>
-          <Link className="btn btn-accent" href="/quickstart">
-            pip install →
+            <span>GantryGraph</span>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-dim)',
+              border: '1px solid var(--border)', padding: '2px 6px', borderRadius: 4,
+              marginLeft: 4,
+            }}>
+              {variant === 'docs' ? 'docs · ' : ''}v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.3.0'}
+            </span>
           </Link>
+
+          {/* Desktop nav */}
+          <nav className="nav nav-desktop">
+            {NAV_LINKS.map(l => (
+              <Link key={l.href} href={l.href} style={isActive(l.href) ? { color: 'var(--fg)' } : {}}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="nav-right">
+            <a
+              className="icon-btn"
+              href="https://github.com/GantryGraph/GantryGraph"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="GitHub"
+            >
+              <GitHubIcon />
+              <StarIcon />
+              <span style={{ minWidth: 24, display: 'inline-block' }}>
+                {stars ?? '—'}
+              </span>
+            </a>
+            <Link className="btn btn-accent nav-cta" href="/quickstart">
+              pip install →
+            </Link>
+            {/* Hamburger */}
+            <button
+              className="hamburger"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(o => !o)}
+            >
+              <span className={`ham-bar ${menuOpen ? 'open' : ''}`} />
+              <span className={`ham-bar ${menuOpen ? 'open' : ''}`} />
+              <span className={`ham-bar ${menuOpen ? 'open' : ''}`} />
+            </button>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile menu overlay */}
+      {menuOpen && (
+        <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+          <nav className="mobile-nav" onClick={e => e.stopPropagation()}>
+            {NAV_LINKS.map(l => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`mobile-nav-link ${isActive(l.href) ? 'active' : ''}`}
+              >
+                {l.label}
+              </Link>
+            ))}
+            <div className="mobile-nav-footer">
+              <a
+                href="https://github.com/GantryGraph/GantryGraph"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mobile-nav-link"
+              >
+                GitHub ↗
+              </a>
+              <Link href="/quickstart" className="btn btn-accent" style={{ marginTop: 8, justifyContent: 'center' }}>
+                pip install gantrygraph →
+              </Link>
+            </div>
+          </nav>
+        </div>
+      )}
+    </>
   );
 }
