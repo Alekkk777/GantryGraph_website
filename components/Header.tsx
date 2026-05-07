@@ -83,7 +83,7 @@ export default function Header({ variant = 'landing' }: HeaderProps) {
               border: '1px solid var(--border)', padding: '2px 6px', borderRadius: 4,
               marginLeft: 4,
             }}>
-              {variant === 'docs' ? 'docs · ' : ''}v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.5.0'}
+              {variant === 'docs' ? 'docs · ' : ''}v{process.env.NEXT_PUBLIC_PYPI_VERSION ?? '0.5.0'}
             </span>
           </Link>
 

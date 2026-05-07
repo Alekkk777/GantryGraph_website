@@ -190,7 +190,7 @@ function AgentStream() {
   );
 }
 
-const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.5.0';
+const version = process.env.NEXT_PUBLIC_PYPI_VERSION ?? '0.5.0';
 
 export default function Hero() {
   return (

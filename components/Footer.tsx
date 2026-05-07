@@ -61,7 +61,7 @@ export default function Footer() {
         </div>
         <div className="footer-bottom">
           <div>© 2026 GantryGraph · MIT License</div>
-          <div>v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.5.0'} · python 3.11+ · linux · macos · windows</div>
+          <div>v{process.env.NEXT_PUBLIC_PYPI_VERSION ?? '0.5.0'} · python 3.11+ · linux · macos · windows</div>
         </div>
       </div>
     </footer>
