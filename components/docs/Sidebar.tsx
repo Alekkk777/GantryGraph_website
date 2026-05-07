@@ -34,6 +34,7 @@ const NAV = [
       { href: '/docs/how-to/filesystem', label: 'Files & shell' },
       { href: '/docs/how-to/memory', label: 'Agent memory' },
       { href: '/docs/how-to/observability', label: 'Observability' },
+      { href: '/docs/how-to/cost-optimization', label: 'Cost optimization' },
       { href: '/docs/how-to/custom-tools', label: 'Custom tools' },
     ],
   },

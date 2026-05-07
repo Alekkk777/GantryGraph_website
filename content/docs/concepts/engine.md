@@ -76,6 +76,10 @@ agent = GantryEngine(
     # State persistence (suspend/resume)
     checkpointer=...,
     enable_suspension=False,
+    # Token cost controls
+    perception_mode="auto",     # "auto" | "axtree" | "vision"
+    message_window=None,        # keep only the last N messages in context
+    enable_caching=False,       # Anthropic prompt cache on system messages
 )
 ```
 
@@ -120,6 +124,39 @@ def log(event):
 
 agent = GantryEngine(llm=..., on_event=log)
 ```
+
+## Token cost controls
+
+Four orthogonal knobs that together reduce token spend by **5–10×** on long tasks:
+
+| Parameter | Default | Savings |
+|---|---|---|
+| `perception_mode="axtree"` | `"auto"` | ~80% per observe step (text tree vs screenshot) |
+| `message_window=20` | `None` | Caps O(N²) history growth to O(N) |
+| `enable_caching=True` | `False` | Up to 90% on Anthropic system-message tokens |
+| `ShellTools(max_output_chars=2000)` | `2000` | Prevents megabyte log dumps |
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.actions import ShellTools
+from langchain_anthropic import ChatAnthropic
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[ShellTools(max_output_chars=2000)],
+    perception_mode="axtree",   # accessibility tree only — no screenshots
+    message_window=20,          # messages[0] + last 20 messages sent to LLM
+    enable_caching=True,        # cache_control on system messages
+    max_steps=50,
+)
+```
+
+`perception_mode` values:
+- **`"auto"`** (default) — sends the accessibility tree when available, screenshot as fallback
+- **`"axtree"`** — always text-only; fails fast on vision-only setups (canvas apps, PDFs)
+- **`"vision"`** — always screenshot; use for pixel-level tasks (CAPTCHA, image editing)
+
+See the [Cost optimization guide](../how-to/cost-optimization.md) for a full breakdown.
 
 ## Limits and budget
 

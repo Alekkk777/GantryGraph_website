@@ -61,7 +61,56 @@ Turn it off only if you're testing against a local server where fingerprinting d
 web = WebPage(url="http://localhost:3000", headless=True, stealth=False)
 ```
 
-## Step 3 — Web search (search engines block bots — use the API instead)
+## Step 3 — Persistent sessions (stay logged in)
+
+Sites like WhatsApp Web, Gmail, and Notion require a login. Without persistence the
+agent sees a fresh browser on every run — no cookies, no session, QR scan required again.
+
+`profile_dir` saves the full Chromium profile (cookies, localStorage, IndexedDB) to a local
+directory. **Log in once with `headless=False`; every subsequent run restores the session
+automatically.**
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.actions import BrowserTools
+from langchain_anthropic import ChatAnthropic
+
+# First run only — headless=False so the browser window is visible for login / QR scan.
+# After you complete the login, close the browser and re-run with headless=True.
+tools = BrowserTools(
+    headless=False,
+    profile_dir="~/.gantrygraph/profiles/whatsapp",
+)
+
+# All subsequent runs — session is restored automatically, no login prompt.
+tools = BrowserTools(
+    headless=True,
+    profile_dir="~/.gantrygraph/profiles/whatsapp",
+)
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    tools=[tools],
+    max_steps=30,
+)
+
+result = agent.run(
+    "Open WhatsApp Web, search for 'Mamma', and send: 'Cacio e Pepe recipe attached!'"
+)
+```
+
+`profile_dir` works with any site. Keep one directory per service so sessions never overlap:
+
+```python
+BrowserTools(profile_dir="~/.gantrygraph/profiles/gmail")
+BrowserTools(profile_dir="~/.gantrygraph/profiles/notion")
+```
+
+> **Why IndexedDB matters:** WhatsApp Web stores its encrypted message database in IndexedDB,
+> not cookies. `profile_dir` (Chromium's `launch_persistent_context`) saves the full profile
+> including IndexedDB — which is why it works where a cookie-only `storage_state` file does not.
+
+## Step 4 — Web search (search engines block bots — use the API instead)
 
 Google, Bing, and DuckDuckGo detect and block headless browsers with CAPTCHAs regardless of
 stealth patches. For search queries, use `WebSearchTool` which calls the
