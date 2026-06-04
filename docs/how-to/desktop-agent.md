@@ -113,18 +113,76 @@ print(result)
 
 ---
 
+## Step 4 — Use the accessibility tree instead of screenshots (macOS, zero vision tokens)
+
+```bash
+pip install 'gantrygraph[desktop-ax]'
+```
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.perception import DesktopAXTree
+from gantrygraph.actions import MouseKeyboardTools
+from langchain_anthropic import ChatAnthropic
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    perception=DesktopAXTree(app_name="Obsidian"),
+    tools=[MouseKeyboardTools()],
+    max_steps=20,
+)
+
+agent.run("Find the note titled 'Q2 Goals' and append a new bullet: 'Ship DesktopAXTree'")
+```
+
+`DesktopAXTree` reads the native macOS **Accessibility API** (AXUIElement) — the same tree that screen readers use. Instead of sending a screenshot to the vision model, it passes structured text describing every button, text field, and label in the app. No image tokens. No coordinate guessing.
+
+```
+AXApplication 'Obsidian'
+  AXWindow 'My Vault — Obsidian'
+    AXTextArea 'Q2 Goals\n- Ship v1\n- Write docs' (focused, editable)
+    AXButton 'New note' (enabled)
+    AXButton 'Search' (enabled)
+```
+
+| | `DesktopScreen` | `DesktopAXTree` |
+|---|---|---|
+| Works on | macOS, Linux, Windows | macOS only |
+| Observation format | Screenshot image | Structured text |
+| Token cost | ~2 000 / step | ~200 / step |
+| Coordinate precision | Depends on resolution | Element-level (no coords) |
+| Works when app off-screen | No | Yes |
+
+Target a specific app by name, by bundle ID, or leave both `None` to target whatever is in focus:
+
+```python
+DesktopAXTree(app_name="Obsidian")                   # by localised name
+DesktopAXTree(bundle_id="md.obsidian")               # by bundle ID
+DesktopAXTree()                                      # frontmost app
+DesktopAXTree(app_name="Obsidian", include_screenshot=True)  # AX tree + screenshot
+```
+
+Grant Accessibility permission once in **System Settings → Privacy & Security → Accessibility**.
+
+---
+
 ## Variants
 
 - **Reduce token cost:** `DesktopScreen(max_resolution=(1280, 720), vision_mode="low")`
 - **Lower resolution to save tokens further:** `DesktopScreen(max_resolution=(1024, 768))`
 - **Second monitor:** `DesktopScreen(monitor=2)`
+- **Native app, zero vision tokens (macOS):** `DesktopAXTree(app_name="Obsidian")`
+- **AX tree + screenshot fallback:** `DesktopAXTree(include_screenshot=True)`
 - **Slower, safer actions:** `MouseKeyboardTools(pause=0.2)`
 - **Disable fail-safe (pyautogui corner abort):** `MouseKeyboardTools(fail_safe=False)`
-- **Use the preset shortcut:** `from gantrygraph.presets import desktop_agent; agent = desktop_agent(llm)`
 
 ## Troubleshooting
 
 **`ImportError: MouseKeyboardTools requires the [desktop] extra`** — run `pip install 'gantrygraph[desktop]'`.
+
+**`ImportError: DesktopAXTree requires atomacos`** — run `pip install 'gantrygraph[desktop-ax]'` (macOS only).
+
+**`AX error: APIDisabled`** — grant Accessibility permission in System Settings → Privacy & Security → Accessibility, then restart your terminal.
 
 **`KeyError` or blank screenshot on Linux** — ensure `DISPLAY` is set and Xvfb is running: `export DISPLAY=:99`.
 
