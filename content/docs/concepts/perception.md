@@ -53,6 +53,47 @@ The engine automatically skips sending an image if the screen hasn't changed
 since the previous step. This saves vision tokens during steps where the agent
 is waiting for a tool result or processing text.
 
+## `DesktopAXTree` — read any macOS app without screenshots
+
+Instead of capturing a screenshot and spending vision tokens, `DesktopAXTree` reads
+the native **macOS Accessibility API** (AXUIElement) and returns the full UI
+hierarchy as structured text. The LLM sees every button, text field, and label
+without consuming a single image token.
+
+```bash
+pip install 'gantrygraph[desktop-ax]'
+# Grant: System Settings → Privacy & Security → Accessibility
+```
+
+```python
+from gantrygraph.perception import DesktopAXTree
+
+# Target a specific app
+perception = DesktopAXTree(app_name="Obsidian")
+
+# Or whichever app is currently focused
+perception = DesktopAXTree()
+
+# AX tree + screenshot together
+perception = DesktopAXTree(app_name="Obsidian", include_screenshot=True)
+```
+
+What the LLM receives instead of a screenshot:
+
+```
+AXApplication 'Obsidian'
+  AXWindow 'My Vault — Obsidian'
+    AXTextArea 'Q2 Goals\n- Ship v1\n- Write docs' (focused, editable)
+    AXButton 'New note' (enabled)
+    AXButton 'Search' (enabled)
+```
+
+| | `DesktopScreen` | `DesktopAXTree` |
+|---|---|---|
+| Platform | macOS, Linux, Windows | macOS only |
+| Token cost | ~2 000 / step | ~200 / step |
+| Works off-screen | No | Yes |
+
 ## `WebPage` — screenshot a browser page
 
 Renders a URL via Playwright, captures a screenshot, and extracts the

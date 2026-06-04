@@ -50,7 +50,38 @@ print(result)
 
 `ChromaMemory` persists embeddings to disk via ChromaDB and uses sentence-transformer embeddings for semantic search. The next run automatically recalls the most relevant past entries.
 
-## Step 3 — Custom backend
+## Step 3 — TTL memory (entries expire automatically)
+
+```bash
+pip install 'gantrygraph[minivecdb]'
+```
+
+```python
+from gantrygraph import GantryEngine
+from gantrygraph.memory import MiniVecDbMemory
+from langchain_openai import OpenAIEmbeddings
+from langchain_anthropic import ChatAnthropic
+
+embed = OpenAIEmbeddings(model="text-embedding-3-small").embed_query
+
+agent = GantryEngine(
+    llm=ChatAnthropic(model="claude-sonnet-4-6"),
+    memory=MiniVecDbMemory(
+        embed_fn=embed,
+        ttl_ms=300_000,   # 5-minute TTL — old observations stop polluting context
+    ),
+    max_steps=50,
+)
+
+result = agent.run("Navigate the dashboard and extract all KPI values.")
+print(result)
+```
+
+`MiniVecDbMemory` is backed by a Rust HNSW engine (MiniVecDb). Entries expire after `ttl_ms` milliseconds — useful for long browser-navigation loops where banners, pop-ups, or transient UI state seen at step 2 should not influence decisions at step 40.
+
+You bring your own embedding function: any LangChain `Embeddings.embed_query` method, a `SentenceTransformer`, or any callable returning a 384-dimensional float list.
+
+## Step 4 — Custom backend
 
 ```python
 from gantrygraph.memory.base import BaseMemory, MemoryResult
@@ -121,15 +152,21 @@ asyncio.run(agent.arun("Add a new endpoint following the existing patterns."))
 - **In-memory for testing:** `memory=InMemoryStore()` — no install, resets on exit
 - **Ephemeral ChromaDB (no disk):** `ChromaMemory(persist_directory=None)`
 - **Named collection per project:** `ChromaMemory(collection_name="project-x")`
+- **TTL memory, no expiry:** `MiniVecDbMemory(embed_fn=embed)` — HNSW search without TTL
+- **Short TTL for fast loops:** `MiniVecDbMemory(embed_fn=embed, ttl_ms=60_000)` — 1-minute decay
 - **Search memory manually:** `results = await memory.search("authentication errors", k=3)`
 
 ## Troubleshooting
 
 **`ImportError: ChromaMemory requires chromadb`** — run `pip install 'gantrygraph[memory]'`.
 
-**Memory results are irrelevant** — `InMemoryStore` uses trigram overlap, not semantic similarity. Switch to `ChromaMemory` for better retrieval on longer or more diverse text.
+**`ImportError: MiniVecDbMemory requires minivecdb`** — run `pip install 'gantrygraph[minivecdb]'`.
+
+**Memory results are irrelevant** — `InMemoryStore` uses trigram overlap, not semantic similarity. Switch to `ChromaMemory` or `MiniVecDbMemory` for better retrieval on longer or more diverse text.
 
 **`ChromaMemory` is slow on first run** — the first run downloads the sentence-transformer model (~90 MB). Subsequent runs use the cached model.
+
+**`MiniVecDbMemory` raises `ValueError: vector must be 384-dimensional`** — your `embed_fn` returns a vector of the wrong size. Use a model that outputs 384 dimensions (e.g. `text-embedding-3-small` or `all-MiniLM-L6-v2`).
 
 ---
 

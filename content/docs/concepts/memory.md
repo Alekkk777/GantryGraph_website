@@ -13,12 +13,13 @@ Two situations where you need memory:
 - **Long multi-step tasks** — the agent needs to recall findings from 10 steps ago
 - **Recurring agents** — the agent runs daily and should remember past outcomes
 
-## Two backends
+## Three backends
 
-| Backend | Persists? | Setup | Use when |
-|---------|-----------|-------|----------|
-| `InMemoryStore` | No — resets on exit | Zero | Single run, development, testing |
-| `ChromaMemory` | Yes — on disk | `pip install 'gantrygraph[memory]'` | Across multiple runs |
+| Backend | Persists? | TTL | Setup | Use when |
+|---------|-----------|-----|-------|----------|
+| `InMemoryStore` | No — resets on exit | No | Zero | Development, testing |
+| `ChromaMemory` | Yes — on disk | No | `pip install 'gantrygraph[memory]'` | Across multiple runs |
+| `MiniVecDbMemory` | No — in-process | **Yes** | `pip install 'gantrygraph[minivecdb]'` | Long loops where old info should expire |
 
 ## `InMemoryStore`
 
@@ -53,6 +54,29 @@ agent = GantryEngine(
 Uses sentence-transformer embeddings with ChromaDB.
 The first run downloads the model (~90 MB); subsequent runs use the cache.
 Pass `persist_directory=None` for an in-memory ChromaDB (no disk writes).
+
+## `MiniVecDbMemory`
+
+```python
+from gantrygraph.memory import MiniVecDbMemory
+from langchain_openai import OpenAIEmbeddings
+
+embed = OpenAIEmbeddings(model="text-embedding-3-small").embed_query
+
+agent = GantryEngine(
+    llm=...,
+    memory=MiniVecDbMemory(
+        embed_fn=embed,
+        ttl_ms=300_000,   # entries expire after 5 minutes
+    ),
+)
+```
+
+Backed by a Rust HNSW engine (MiniVecDb) with 1-bit vector quantisation.
+Uses 48 bytes per vector — 32× less RAM than ChromaDB's float32 approach.
+The `ttl_ms` parameter makes entries expire automatically: ideal for long
+navigation loops where information from early steps becomes stale or
+misleading later.
 
 ## How it works
 

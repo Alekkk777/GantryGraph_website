@@ -321,6 +321,29 @@ screen = DesktopScreen(max_resolution=(1280, 720))
 
 ---
 
+### `DesktopAXTree`
+
+Read the native macOS Accessibility API instead of taking a screenshot. Zero vision tokens. Requires `gantrygraph[desktop-ax]` (macOS only).
+
+```python
+from gantrygraph.perception import DesktopAXTree
+
+perception = DesktopAXTree(app_name="Obsidian")
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `app_name` | `None` | Localised app name — `None` targets the frontmost app |
+| `bundle_id` | `None` | App bundle ID (e.g. `"md.obsidian"`) — takes precedence over `app_name` |
+| `include_screenshot` | `False` | Also capture a desktop screenshot alongside the AX tree |
+| `max_depth` | `8` | Maximum nesting depth of the serialised tree |
+| `max_children` | `40` | Maximum children rendered per node |
+| `max_text_length` | `400` | Maximum characters kept from any single text value |
+
+Grant Accessibility permission in **System Settings → Privacy & Security → Accessibility** before first use.
+
+---
+
 ### `MultiPerception`
 
 Combine multiple perception sources into one observation.
@@ -398,6 +421,28 @@ memory = ChromaMemory(
 |---|---|---|
 | `persist_directory` | `None` | On-disk path — `None` uses an in-memory ChromaDB |
 | `collection` | `"gantry_memory"` | ChromaDB collection name |
+
+---
+
+### `MiniVecDbMemory`
+
+Ultra-light Rust HNSW vector memory with native TTL support. Requires `gantrygraph[minivecdb]`.
+
+```python
+from gantrygraph.memory import MiniVecDbMemory
+from langchain_openai import OpenAIEmbeddings
+
+embed = OpenAIEmbeddings(model="text-embedding-3-small").embed_query
+memory = MiniVecDbMemory(embed_fn=embed, ttl_ms=300_000)
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `embed_fn` | required | `(str) -> list[float]` callable returning a 384-dim vector — any LangChain `Embeddings.embed_query` works |
+| `capacity` | `10_000` | Maximum number of entries |
+| `ttl_ms` | `None` | Milliseconds before entries expire — `None` disables expiry |
+| `m` | `16` | HNSW graph fanout |
+| `ef_construction` | `200` | HNSW build-time beam width |
 
 ---
 
